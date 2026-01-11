@@ -5,6 +5,14 @@ services:
     build: .
     container_name: video-audio-merger
     restart: unless-stopped
+    command: >
+      bash -c "
+      apt-get update &&
+      apt-get install -y ffmpeg curl &&
+      pip install --no-cache-dir flask gunicorn &&
+      cd /app &&
+      gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 600 app:app
+      "
     ports:
       - "5001:5000"  # Host:Container - Ändere 5001 falls Port belegt
     environment:
