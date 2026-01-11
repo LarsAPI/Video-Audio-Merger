@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  video-merger:
+    build: .
+    container_name: video-audio-merger
+    restart: unless-stopped
+    ports:
+      - "5001:5000"  # Host:Container - Ändere 5001 falls Port belegt
+    environment:
+      - MAX_FILE_SIZE=524288000  # 500 MB in Bytes
+      - CLEANUP_AGE_HOURS=24
+    volumes:
+      - uploads:/tmp/uploads
+      - output:/tmp/output
+    mem_limit: 2g
+    mem_reservation: 512m
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    labels:
+      - "com.umbrel.app=video-audio-merger"
+      - "com.umbrel.app.name=Video Audio Merger"
+      - "com.umbrel.app.description=Merge audio with video loops"
+
+volumes:
+  uploads:
+    driver: local
+  output:
+    driver: local
