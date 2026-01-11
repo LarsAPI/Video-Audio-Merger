@@ -402,27 +402,39 @@ def merge_video_audio(audio_path, video_path, output_path):
     try:
         # Get audio duration
         duration = get_video_duration(audio_path)
+        print(f"Audio duration: {duration} seconds")
         
-        # FFmpeg command
+        # FFmpeg command - optimiert für Geschwindigkeit
         cmd = [
             'ffmpeg', '-y',
             '-stream_loop', '-1', '-i', video_path,
             '-i', audio_path,
             '-t', str(duration),
-            '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+            '-c:v', 'copy',  # Video NICHT neu encodieren - viel schneller!
             '-c:a', 'aac', '-b:a', '192k',
-            '-pix_fmt', 'yuv420p',
             '-movflags', '+faststart',
             '-shortest',
             output_path
         ]
         
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        print(f"Running FFmpeg command: {' '.join(cmd)}")
+        
+        result = subprocess.run(
+            cmd, 
+            capture_output=True, 
+            text=True, 
+            timeout=3600  # 1 Stunde Timeout
+        )
         
         if result.returncode != 0:
+            print(f"FFmpeg stderr: {result.stderr}")
             raise Exception(f"FFmpeg error: {result.stderr}")
         
+        print("FFmpeg completed successfully")
         return True
+    except subprocess.TimeoutExpired:
+        print("FFmpeg timeout - process took too long")
+        raise Exception("Video processing timeout - file too large")
     except Exception as e:
         print(f"Merge error: {e}")
         raise
@@ -455,42 +467,67 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload():
     """Handle file upload and merging"""
+    audio_path = None
+    video_path = None
+    
     try:
+        print("=== UPLOAD START ===")
+        
         # Check files
         if 'audio' not in request.files or 'video' not in request.files:
+            print("ERROR: Missing files in request")
             return jsonify({'success': False, 'error': 'Audio und Video benötigt'}), 400
         
         audio_file = request.files['audio']
         video_file = request.files['video']
         
+        print(f"Audio file: {audio_file.filename}")
+        print(f"Video file: {video_file.filename}")
+        
         if audio_file.filename == '' or video_file.filename == '':
+            print("ERROR: Empty filenames")
             return jsonify({'success': False, 'error': 'Leere Dateien'}), 400
         
         # Generate unique ID
         file_id = str(uuid.uuid4())
+        print(f"Generated file_id: {file_id}")
         
         # Save uploaded files
-        audio_ext = os.path.splitext(audio_file.filename)[1]
-        video_ext = os.path.splitext(video_file.filename)[1]
+        audio_ext = os.path.splitext(audio_file.filename)[1] or '.mp3'
+        video_ext = os.path.splitext(video_file.filename)[1] or '.mp4'
         
         audio_path = os.path.join(UPLOAD_FOLDER, f"{file_id}_audio{audio_ext}")
         video_path = os.path.join(UPLOAD_FOLDER, f"{file_id}_video{video_ext}")
         output_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.mp4")
         
+        print(f"Saving audio to: {audio_path}")
         audio_file.save(audio_path)
+        print(f"Audio saved: {os.path.getsize(audio_path)} bytes")
+        
+        print(f"Saving video to: {video_path}")
         video_file.save(video_path)
+        print(f"Video saved: {os.path.getsize(video_path)} bytes")
         
         # Merge files
+        print("Starting merge...")
         merge_video_audio(audio_path, video_path, output_path)
+        print(f"Merge complete: {output_path}")
         
         # Get file info
         file_size = os.path.getsize(output_path)
+        print(f"Output file size: {file_size} bytes")
+        
         duration = get_video_duration(output_path)
+        print(f"Output duration: {duration} seconds")
         
         # Clean up input files
-        os.remove(audio_path)
-        os.remove(video_path)
+        print("Cleaning up input files...")
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+        if os.path.exists(video_path):
+            os.remove(video_path)
         
+        print("=== UPLOAD SUCCESS ===")
         return jsonify({
             'success': True,
             'file_id': file_id,
@@ -499,7 +536,21 @@ def upload():
         })
         
     except Exception as e:
-        print(f"Upload error: {e}")
+        print(f"=== UPLOAD ERROR ===")
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error message: {str(e)}")
+        import traceback
+        print(f"Traceback:\n{traceback.format_exc()}")
+        
+        # Cleanup on error
+        try:
+            if audio_path and os.path.exists(audio_path):
+                os.remove(audio_path)
+            if video_path and os.path.exists(video_path):
+                os.remove(video_path)
+        except:
+            pass
+        
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/download/<file_id>')
