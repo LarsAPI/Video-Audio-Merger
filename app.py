@@ -308,16 +308,29 @@ HTML_TEMPLATE = '''
             resultDiv.innerHTML = `
                 <div class="spinner"></div>
                 <div><strong>Video wird erstellt...</strong></div>
-                <div style="margin-top: 10px;">Dies kann 1-5 Minuten dauern.</div>
+                <div style="margin-top: 10px;">
+                    ⚠️ Große Dateien können 20-30 Minuten dauern.<br>
+                    Bitte Fenster NICHT schließen!<br>
+                    <small style="margin-top: 10px; display: block;">
+                        Bei Verbindungsabbruch: Prüfe Container-Logs für file_id<br>
+                        und lade mit /download/[file_id] herunter
+                    </small>
+                </div>
             `;
             
             submitBtn.disabled = true;
             
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3600000); // 1 Stunde Timeout
+                
                 const response = await fetch('/upload', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
                 
                 const result = await response.json();
                 
@@ -334,13 +347,20 @@ HTML_TEMPLATE = '''
                             <a href="/download/${result.file_id}" class="download-btn" download>
                                 ⬇️ Video herunterladen
                             </a>
+                            <div style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                                Direct Link: /download/${result.file_id}
+                            </div>
                         </div>
                     `;
                 } else {
                     showError(result.error || 'Fehler beim Erstellen des Videos');
                 }
             } catch (error) {
-                showError(error.message);
+                if (error.name === 'AbortError') {
+                    showError('Timeout nach 1 Stunde. Video möglicherweise trotzdem erstellt - prüfe Container-Logs!');
+                } else {
+                    showError(error.message);
+                }
             } finally {
                 submitBtn.disabled = false;
             }
