@@ -484,13 +484,13 @@ def merge_video_audio(audio_path, video_path, output_path, status_path=None):
             '-i', video_path,
             '-t', str(duration),
             '-c:v', 'libx264',
-            '-preset', 'veryfast',  # SCHNELL: ~150-300 fps encoding
-            '-crf', '35',            # KOMPRESSION: Höher = kleiner (war 32, jetzt 35)
+            '-preset', 'medium',  # SCHNELL: ~150-300 fps encoding
+            '-crf', '32',            # KOMPRESSION: Höher = kleiner (war 32, jetzt 35)
             '-profile:v', 'high',
             '-level', '4.2',
             '-pix_fmt', 'yuv420p',
-            '-maxrate', '4M',        # Bitrate etwas gesenkt (war 5M)
-            '-bufsize', '8M',        # Buffer angepasst (war 10M)
+            '-maxrate', '5M',        # Bitrate etwas gesenkt (war 5M)
+            '-bufsize', '10M',        # Buffer angepasst (war 10M)
             '-g', '250',             # GOP size
             '-movflags', '+faststart',
             '-an',                   # Kein Audio im ersten Schritt
