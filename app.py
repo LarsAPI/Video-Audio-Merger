@@ -8,6 +8,7 @@ from flask import Flask, request, send_file, render_template_string, jsonify
 import os
 import subprocess
 import uuid
+import json
 from datetime import datetime, timedelta
 import threading
 import time
@@ -307,61 +308,93 @@ HTML_TEMPLATE = '''
             resultDiv.className = 'result loading';
             resultDiv.innerHTML = `
                 <div class="spinner"></div>
-                <div><strong>Video wird erstellt...</strong></div>
-                <div style="margin-top: 10px;">
-                    ⚠️ Große Dateien können 20-30 Minuten dauern.<br>
-                    Bitte Fenster NICHT schließen!<br>
-                    <small style="margin-top: 10px; display: block;">
-                        Bei Verbindungsabbruch: Prüfe Container-Logs für file_id<br>
-                        und lade mit /download/[file_id] herunter
-                    </small>
-                </div>
+                <div><strong>Dateien werden hochgeladen...</strong></div>
+                <div style="margin-top: 10px;">Bitte warten...</div>
             `;
             
             submitBtn.disabled = true;
             
             try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 3600000); // 1 Stunde Timeout
-                
+                // Upload files
                 const response = await fetch('/upload', {
                     method: 'POST',
-                    body: formData,
-                    signal: controller.signal
+                    body: formData
                 });
-                
-                clearTimeout(timeoutId);
                 
                 const result = await response.json();
                 
-                if (result.success) {
-                    resultDiv.className = 'result success';
-                    resultDiv.innerHTML = `
-                        <div style="text-align: center;">
-                            <div style="font-size: 3em; margin-bottom: 10px;">✅</div>
-                            <div><strong>Video erfolgreich erstellt!</strong></div>
-                            <div style="margin: 10px 0;">
-                                Größe: ${result.size}<br>
-                                Dauer: ${result.duration}
-                            </div>
-                            <a href="/download/${result.file_id}" class="download-btn" download>
-                                ⬇️ Video herunterladen
-                            </a>
-                            <div style="margin-top: 10px; font-size: 0.9em; color: #666;">
-                                Direct Link: /download/${result.file_id}
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    showError(result.error || 'Fehler beim Erstellen des Videos');
+                if (!result.success) {
+                    showError(result.error || 'Upload fehlgeschlagen');
+                    return;
                 }
+                
+                // Start status polling
+                const jobId = result.job_id;
+                console.log('Job ID:', jobId);
+                
+                resultDiv.innerHTML = `
+                    <div class="spinner"></div>
+                    <div><strong>Upload erfolgreich!</strong></div>
+                    <div id="statusMessage" style="margin-top: 10px;">Verarbeitung startet...</div>
+                    <div style="margin-top: 15px; background: #e0e0e0; border-radius: 10px; height: 20px; overflow: hidden;">
+                        <div id="progressBar" style="background: linear-gradient(90deg, #667eea, #764ba2); height: 100%; width: 0%; transition: width 0.3s;"></div>
+                    </div>
+                    <div id="progressText" style="margin-top: 5px; font-size: 0.9em; color: #666;">0%</div>
+                `;
+                
+                // Poll status every 5 seconds
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const statusResponse = await fetch(`/status/${jobId}`);
+                        const statusData = await statusResponse.json();
+                        
+                        if (!statusData.success) {
+                            clearInterval(pollInterval);
+                            showError('Fehler beim Abrufen des Status');
+                            return;
+                        }
+                        
+                        // Update UI
+                        const statusMsg = document.getElementById('statusMessage');
+                        const progressBar = document.getElementById('progressBar');
+                        const progressText = document.getElementById('progressText');
+                        
+                        if (statusMsg) statusMsg.textContent = statusData.message;
+                        if (progressBar) progressBar.style.width = statusData.progress + '%';
+                        if (progressText) progressText.textContent = statusData.progress + '%';
+                        
+                        // Check if complete
+                        if (statusData.status === 'complete') {
+                            clearInterval(pollInterval);
+                            
+                            resultDiv.className = 'result success';
+                            resultDiv.innerHTML = `
+                                <div style="text-align: center;">
+                                    <div style="font-size: 3em; margin-bottom: 10px;">✅</div>
+                                    <div><strong>Video erfolgreich erstellt!</strong></div>
+                                    <div style="margin: 10px 0;">
+                                        Größe: ${statusData.size}<br>
+                                        Dauer: ${statusData.duration}
+                                    </div>
+                                    <a href="/download/${statusData.file_id}" class="download-btn" download>
+                                        ⬇️ Video herunterladen
+                                    </a>
+                                </div>
+                            `;
+                            submitBtn.disabled = false;
+                        } else if (statusData.status === 'error') {
+                            clearInterval(pollInterval);
+                            showError(statusData.message);
+                            submitBtn.disabled = false;
+                        }
+                        
+                    } catch (error) {
+                        console.error('Status poll error:', error);
+                    }
+                }, 5000); // Poll every 5 seconds
+                
             } catch (error) {
-                if (error.name === 'AbortError') {
-                    showError('Timeout nach 1 Stunde. Video möglicherweise trotzdem erstellt - prüfe Container-Logs!');
-                } else {
-                    showError(error.message);
-                }
-            } finally {
+                showError(error.message);
                 submitBtn.disabled = false;
             }
         }
@@ -417,7 +450,7 @@ def format_size(bytes):
         bytes /= 1024.0
     return f"{bytes:.2f} TB"
 
-def merge_video_audio(audio_path, video_path, output_path):
+def merge_video_audio(audio_path, video_path, output_path, status_path=None):
     """Merge video and audio using FFmpeg - Hybrid approach: fast + compressed"""
     try:
         # Get audio duration
@@ -432,11 +465,18 @@ def merge_video_audio(audio_path, video_path, output_path):
         loop_count = int(duration / video_duration) + 1
         print(f"Loop count needed: {loop_count}")
         
+        if status_path:
+            update_status(status_path, 'processing', 20, f'Video wird {loop_count}x geloopt...')
+        
         # Step 1: Create looped video (HYBRID: veryfast preset + higher CRF)
         temp_looped_video = os.path.join(UPLOAD_FOLDER, f"temp_looped_{os.path.basename(output_path)}")
         
         print("Step 1: Creating looped video (fast encoding with high compression)...")
         print(f"Estimated encoding time: {(duration * loop_count / 200):.1f} minutes")
+        
+        if status_path:
+            est_minutes = int((duration * loop_count / 200))
+            update_status(status_path, 'processing', 25, f'Video-Encoding läuft... (~{est_minutes} Min)')
         
         cmd_loop = [
             'ffmpeg', '-y',
@@ -477,6 +517,9 @@ def merge_video_audio(audio_path, video_path, output_path):
         
         looped_size = os.path.getsize(temp_looped_video)
         print(f"Looped video created: {format_size(looped_size)}")
+        
+        if status_path:
+            update_status(status_path, 'processing', 80, 'Audio wird hinzugefügt...')
         
         # Step 2: Merge looped video with audio (fast - video copy)
         print("Step 2: Merging audio with looped video...")
@@ -523,6 +566,9 @@ def merge_video_audio(audio_path, video_path, output_path):
         print(f"Total processing time: {total_time/60:.1f} minutes")
         print(f"Compression ratio: {(final_size/looped_size)*100:.1f}% of uncompressed")
         
+        if status_path:
+            update_status(status_path, 'processing', 95, 'Finalisierung...')
+        
         return True
         
     except subprocess.TimeoutExpired as e:
@@ -568,7 +614,7 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload():
-    """Handle file upload and merging"""
+    """Handle file upload and start background processing"""
     audio_path = None
     video_path = None
     
@@ -610,31 +656,33 @@ def upload():
         video_file.save(video_path)
         print(f"Video saved: {os.path.getsize(video_path)} bytes")
         
-        # Merge files
-        print("Starting merge...")
-        merge_video_audio(audio_path, video_path, output_path)
-        print(f"Merge complete: {output_path}")
+        # Create status file
+        status_path = os.path.join(OUTPUT_FOLDER, f"{file_id}_status.json")
+        status_data = {
+            'status': 'processing',
+            'progress': 0,
+            'message': 'Upload erfolgreich - Verarbeitung startet...',
+            'file_id': file_id
+        }
+        with open(status_path, 'w') as f:
+            json.dump(status_data, f)
         
-        # Get file info
-        file_size = os.path.getsize(output_path)
-        print(f"Output file size: {file_size} bytes")
+        # Start background processing
+        print("Starting background processing thread...")
+        thread = threading.Thread(
+            target=process_video_background,
+            args=(file_id, audio_path, video_path, output_path, status_path)
+        )
+        thread.daemon = True
+        thread.start()
         
-        duration = get_video_duration(output_path)
-        print(f"Output duration: {duration} seconds")
+        print(f"=== UPLOAD ACCEPTED - Processing in background ===")
         
-        # Clean up input files
-        print("Cleaning up input files...")
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
-        if os.path.exists(video_path):
-            os.remove(video_path)
-        
-        print("=== UPLOAD SUCCESS ===")
+        # Return immediately with job_id
         return jsonify({
             'success': True,
-            'file_id': file_id,
-            'size': format_size(file_size),
-            'duration': format_duration(duration)
+            'job_id': file_id,
+            'message': 'Upload erfolgreich - Verarbeitung läuft im Hintergrund'
         })
         
     except Exception as e:
@@ -654,6 +702,99 @@ def upload():
             pass
         
         return jsonify({'success': False, 'error': str(e)}), 500
+
+def process_video_background(file_id, audio_path, video_path, output_path, status_path):
+    """Background processing function"""
+    try:
+        print(f"[Background] Starting merge for {file_id}")
+        
+        # Update status: Starting
+        update_status(status_path, 'processing', 10, 'Analysiere Dateien...')
+        
+        # Merge files
+        merge_video_audio(audio_path, video_path, output_path, status_path)
+        
+        # Get file info
+        file_size = os.path.getsize(output_path)
+        duration = get_video_duration(output_path)
+        
+        # Clean up input files
+        print("[Background] Cleaning up input files...")
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+        if os.path.exists(video_path):
+            os.remove(video_path)
+        
+        # Update status: Complete
+        update_status(status_path, 'complete', 100, 'Video erfolgreich erstellt!', {
+            'file_id': file_id,
+            'size': format_size(file_size),
+            'duration': format_duration(duration),
+            'file_size_bytes': file_size
+        })
+        
+        print(f"[Background] === PROCESSING COMPLETE for {file_id} ===")
+        
+    except Exception as e:
+        print(f"[Background] Error processing {file_id}: {e}")
+        import traceback
+        print(f"[Background] Traceback:\n{traceback.format_exc()}")
+        
+        # Update status: Error
+        update_status(status_path, 'error', 0, f'Fehler: {str(e)}')
+        
+        # Cleanup on error
+        try:
+            if audio_path and os.path.exists(audio_path):
+                os.remove(audio_path)
+            if video_path and os.path.exists(video_path):
+                os.remove(video_path)
+        except:
+            pass
+
+def update_status(status_path, status, progress, message, data=None):
+    """Update status file"""
+    try:
+        status_data = {
+            'status': status,
+            'progress': progress,
+            'message': message,
+            'timestamp': datetime.now().isoformat()
+        }
+        if data:
+            status_data.update(data)
+        
+        with open(status_path, 'w') as f:
+            json.dump(status_data, f)
+    except Exception as e:
+        print(f"Error updating status: {e}")
+
+@app.route('/status/<job_id>')
+def get_status(job_id):
+    """Get processing status"""
+    try:
+        status_path = os.path.join(OUTPUT_FOLDER, f"{job_id}_status.json")
+        
+        if not os.path.exists(status_path):
+            return jsonify({
+                'success': False,
+                'error': 'Job not found'
+            }), 404
+        
+        with open(status_path, 'r') as f:
+            status_data = json.load(f)
+        
+        return jsonify({
+            'success': True,
+            **status_data
+        })
+        
+    except Exception as e:
+        print(f"Status check error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @app.route('/download/<file_id>')
 def download(file_id):
