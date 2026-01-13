@@ -398,11 +398,11 @@ def format_size(bytes):
     return f"{bytes:.2f} TB"
 
 def merge_video_audio(audio_path, video_path, output_path):
-    """Merge video and audio using FFmpeg - Optimized like n8n workflow"""
+    """Merge video and audio using FFmpeg - Hybrid approach: fast + compressed"""
     try:
         # Get audio duration
         duration = get_video_duration(audio_path)
-        print(f"Audio duration: {duration} seconds")
+        print(f"Audio duration: {duration} seconds ({duration/60:.1f} minutes)")
         
         # Get video duration
         video_duration = get_video_duration(video_path)
@@ -412,52 +412,61 @@ def merge_video_audio(audio_path, video_path, output_path):
         loop_count = int(duration / video_duration) + 1
         print(f"Loop count needed: {loop_count}")
         
-        # Step 1: Create looped video (like your n8n workflow)
+        # Step 1: Create looped video (HYBRID: veryfast preset + higher CRF)
         temp_looped_video = os.path.join(UPLOAD_FOLDER, f"temp_looped_{os.path.basename(output_path)}")
         
-        print("Step 1: Creating looped video...")
+        print("Step 1: Creating looped video (fast encoding with high compression)...")
+        print(f"Estimated encoding time: {(duration * loop_count / 200):.1f} minutes")
+        
         cmd_loop = [
             'ffmpeg', '-y',
             '-stream_loop', str(loop_count - 1),
             '-i', video_path,
             '-t', str(duration),
             '-c:v', 'libx264',
-            '-preset', 'medium',
-            '-crf', '32',  # Höhere CRF = kleinere Datei (dein n8n nutzt 32)
+            '-preset', 'veryfast',  # SCHNELL: ~150-300 fps encoding
+            '-crf', '35',            # KOMPRESSION: Höher = kleiner (war 32, jetzt 35)
             '-profile:v', 'high',
             '-level', '4.2',
             '-pix_fmt', 'yuv420p',
-            '-maxrate', '5M',
-            '-bufsize', '10M',
-            '-g', '250',
+            '-maxrate', '4M',        # Bitrate etwas gesenkt (war 5M)
+            '-bufsize', '8M',        # Buffer angepasst (war 10M)
+            '-g', '250',             # GOP size
             '-movflags', '+faststart',
-            '-an',  # Kein Audio im ersten Schritt
+            '-an',                   # Kein Audio im ersten Schritt
+            '-threads', '0',         # Nutze alle verfügbaren CPU-Threads
             temp_looped_video
         ]
         
-        print(f"Running: {' '.join(cmd_loop)}")
+        print(f"Running: {' '.join(cmd_loop[:15])}...")  # Nur ersten Teil loggen
+        
+        start_time = time.time()
         result_loop = subprocess.run(
             cmd_loop,
             capture_output=True,
             text=True,
-            timeout=3600
+            timeout=7200  # 2 Stunden für Step 1
         )
         
+        encoding_time = time.time() - start_time
+        print(f"Encoding completed in {encoding_time/60:.1f} minutes")
+        
         if result_loop.returncode != 0:
-            print(f"FFmpeg loop stderr: {result_loop.stderr}")
-            raise Exception(f"FFmpeg loop error: {result_loop.stderr}")
+            print(f"FFmpeg loop stderr: {result_loop.stderr[-500:]}")  # Nur letzten Teil
+            raise Exception(f"FFmpeg loop error: {result_loop.stderr[-200:]}")
         
-        print(f"Looped video created: {os.path.getsize(temp_looped_video)} bytes")
+        looped_size = os.path.getsize(temp_looped_video)
+        print(f"Looped video created: {format_size(looped_size)}")
         
-        # Step 2: Merge looped video with audio (like your n8n workflow)
+        # Step 2: Merge looped video with audio (fast - video copy)
         print("Step 2: Merging audio with looped video...")
         cmd_merge = [
             'ffmpeg', '-y',
             '-i', temp_looped_video,
             '-i', audio_path,
-            '-c:v', 'copy',  # Video copy - kein Re-Encoding
+            '-c:v', 'copy',          # Video copy - kein Re-Encoding
             '-c:a', 'aac',
-            '-b:a', '96k',  # Niedrigere Audio-Bitrate = kleinere Datei
+            '-b:a', '96k',           # Audio-Bitrate niedrig (für LoFi OK)
             '-ar', '44100',
             '-map', '0:v:0',
             '-map', '1:a:0',
@@ -466,35 +475,42 @@ def merge_video_audio(audio_path, video_path, output_path):
             output_path
         ]
         
-        print(f"Running: {' '.join(cmd_merge)}")
+        print(f"Running: {' '.join(cmd_merge[:10])}...")
+        
         result_merge = subprocess.run(
             cmd_merge,
             capture_output=True,
             text=True,
-            timeout=1800
+            timeout=1800  # 30 Minuten für Step 2
         )
         
         if result_merge.returncode != 0:
-            print(f"FFmpeg merge stderr: {result_merge.stderr}")
+            print(f"FFmpeg merge stderr: {result_merge.stderr[-500:]}")
             # Cleanup temp file
             if os.path.exists(temp_looped_video):
                 os.remove(temp_looped_video)
-            raise Exception(f"FFmpeg merge error: {result_merge.stderr}")
+            raise Exception(f"FFmpeg merge error: {result_merge.stderr[-200:]}")
         
         # Cleanup temp looped video
         if os.path.exists(temp_looped_video):
             os.remove(temp_looped_video)
             print("Cleaned up temporary looped video")
         
-        print(f"FFmpeg completed successfully - Final size: {os.path.getsize(output_path)} bytes")
+        final_size = os.path.getsize(output_path)
+        total_time = time.time() - start_time
+        print(f"=== MERGE COMPLETE ===")
+        print(f"Final file size: {format_size(final_size)}")
+        print(f"Total processing time: {total_time/60:.1f} minutes")
+        print(f"Compression ratio: {(final_size/looped_size)*100:.1f}% of uncompressed")
+        
         return True
         
-    except subprocess.TimeoutExpired:
-        print("FFmpeg timeout - process took too long")
+    except subprocess.TimeoutExpired as e:
+        print(f"FFmpeg timeout after {e.timeout} seconds")
         # Cleanup on timeout
         if 'temp_looped_video' in locals() and os.path.exists(temp_looped_video):
             os.remove(temp_looped_video)
-        raise Exception("Video processing timeout - file too large")
+        raise Exception(f"Video processing timeout - took longer than {e.timeout/60:.0f} minutes")
     except Exception as e:
         print(f"Merge error: {e}")
         # Cleanup on error
