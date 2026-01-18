@@ -9,6 +9,7 @@ import os
 import subprocess
 import uuid
 import json
+import random
 from datetime import datetime, timedelta
 import threading
 import time
@@ -225,10 +226,13 @@ HTML_TEMPLATE = '''
             <div class="upload-section">
                 <div class="upload-box" id="videoBox" onclick="document.getElementById('videoInput').click()">
                     <div class="upload-icon">🎥</div>
-                    <div class="upload-label">Video-Loop hochladen</div>
-                    <div class="upload-hint">MP4, MOV, AVI, WebM (max 500 MB)</div>
+                    <div class="upload-label">Video-Loops hochladen</div>
+                    <div class="upload-hint">MP4, MOV, AVI, WebM (max 500 MB pro Datei)</div>
+                    <div class="upload-hint" style="margin-top: 5px; font-weight: bold; color: #667eea;">
+                        📹 Mehrere Videos = Zufällige Abwechslung!
+                    </div>
                     <div class="file-info" id="videoInfo"></div>
-                    <input type="file" id="videoInput" name="video" accept="video/*">
+                    <input type="file" id="videoInput" name="video" accept="video/*" multiple>
                 </div>
             </div>
             
@@ -241,8 +245,9 @@ HTML_TEMPLATE = '''
             <h3>ℹ️ Hinweise</h3>
             <ul>
                 <li>Das Video wird automatisch geloopt bis zur Audio-Länge</li>
+                <li>🎲 <strong>Mehrere Videos:</strong> Werden zufällig gemischt für mehr Abwechslung!</li>
                 <li>Maximale Dateigröße: 500 MB pro Datei</li>
-                <li>Verarbeitung kann 1-5 Minuten dauern</li>
+                <li>Verarbeitung kann 20-30 Minuten dauern (je nach Audio-Länge)</li>
                 <li>Dateien werden nach 24h automatisch gelöscht</li>
             </ul>
         </div>
@@ -280,8 +285,15 @@ HTML_TEMPLATE = '''
         
         videoInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
-                const file = e.target.files[0];
-                videoInfo.textContent = `✓ ${file.name} (${formatFileSize(file.size)})`;
+                const fileCount = e.target.files.length;
+                const totalSize = Array.from(e.target.files).reduce((sum, file) => sum + file.size, 0);
+                const fileNames = Array.from(e.target.files).map(f => f.name).join(', ');
+                
+                videoInfo.innerHTML = `
+                    ✓ ${fileCount} Video${fileCount > 1 ? 's' : ''} ausgewählt<br>
+                    <small style="color: #666;">${formatFileSize(totalSize)} gesamt</small><br>
+                    <small style="color: #666; display: block; margin-top: 3px;">${fileNames}</small>
+                `;
                 videoBox.classList.add('has-file');
             }
             checkForm();
@@ -295,21 +307,30 @@ HTML_TEMPLATE = '''
                 return;
             }
             
-            if (videoInput.files[0].size > maxSize) {
-                showError(`Video-Datei zu groß: ${formatFileSize(videoInput.files[0].size)} (max 500 MB)`);
-                return;
+            // Check all video files
+            for (let i = 0; i < videoInput.files.length; i++) {
+                if (videoInput.files[i].size > maxSize) {
+                    showError(`Video ${i+1} zu groß: ${formatFileSize(videoInput.files[i].size)} (max 500 MB)`);
+                    return;
+                }
             }
             
             const formData = new FormData();
             formData.append('audio', audioInput.files[0]);
-            formData.append('video', videoInput.files[0]);
+            
+            // Append all video files
+            for (let i = 0; i < videoInput.files.length; i++) {
+                formData.append('videos', videoInput.files[i]);
+            }
             
             resultDiv.style.display = 'block';
             resultDiv.className = 'result loading';
             resultDiv.innerHTML = `
                 <div class="spinner"></div>
                 <div><strong>Dateien werden hochgeladen...</strong></div>
-                <div style="margin-top: 10px;">Bitte warten...</div>
+                <div style="margin-top: 10px;">
+                    1 Audio + ${videoInput.files.length} Video${videoInput.files.length > 1 ? 's' : ''}
+                </div>
             `;
             
             submitBtn.disabled = true;
@@ -335,6 +356,9 @@ HTML_TEMPLATE = '''
                 resultDiv.innerHTML = `
                     <div class="spinner"></div>
                     <div><strong>Upload erfolgreich!</strong></div>
+                    <div style="margin-top: 5px; color: #667eea; font-weight: bold;">
+                        ${result.video_count} Videos werden zufällig gemischt!
+                    </div>
                     <div id="statusMessage" style="margin-top: 10px;">Verarbeitung startet...</div>
                     <div style="margin-top: 15px; background: #e0e0e0; border-radius: 10px; height: 20px; overflow: hidden;">
                         <div id="progressBar" style="background: linear-gradient(90deg, #667eea, #764ba2); height: 100%; width: 0%; transition: width 0.3s;"></div>
@@ -374,7 +398,8 @@ HTML_TEMPLATE = '''
                                     <div><strong>Video erfolgreich erstellt!</strong></div>
                                     <div style="margin: 10px 0;">
                                         Größe: ${statusData.size}<br>
-                                        Dauer: ${statusData.duration}
+                                        Dauer: ${statusData.duration}<br>
+                                        <span style="color: #667eea;">🎲 ${statusData.video_count || 1} Videos zufällig gemischt</span>
                                     </div>
                                     <a href="/download/${statusData.file_id}" class="download-btn" download>
                                         ⬇️ Video herunterladen
@@ -450,86 +475,135 @@ def format_size(bytes):
         bytes /= 1024.0
     return f"{bytes:.2f} TB"
 
-def merge_video_audio(audio_path, video_path, output_path, status_path=None):
-    """Merge video and audio using FFmpeg - Hybrid approach: fast + compressed"""
+def merge_video_audio(audio_path, video_paths, output_path, status_path=None):
+    """Merge video and audio - with random video mixing if multiple videos"""
+    import random
+    
     try:
         # Get audio duration
         duration = get_video_duration(audio_path)
         print(f"Audio duration: {duration} seconds ({duration/60:.1f} minutes)")
         
-        # Get video duration
-        video_duration = get_video_duration(video_path)
-        print(f"Video duration: {video_duration} seconds")
+        # Handle single or multiple videos
+        if isinstance(video_paths, str):
+            video_paths = [video_paths]  # Convert single path to list
         
-        # Calculate loop count
-        loop_count = int(duration / video_duration) + 1
-        print(f"Loop count needed: {loop_count}")
+        print(f"Processing with {len(video_paths)} video file(s)")
+        
+        # Get duration of each video
+        video_durations = []
+        for idx, vp in enumerate(video_paths):
+            vd = get_video_duration(vp)
+            video_durations.append(vd)
+            print(f"Video {idx+1} duration: {vd} seconds")
         
         if status_path:
-            update_status(status_path, 'processing', 20, f'Video wird {loop_count}x geloopt...')
+            update_status(status_path, 'processing', 15, f'{len(video_paths)} Video(s) werden analysiert...')
         
-        # Step 1: Create looped video (HYBRID: veryfast preset + higher CRF)
+        # Calculate how many clips we need total
+        avg_video_duration = sum(video_durations) / len(video_durations)
+        total_clips_needed = int(duration / avg_video_duration) + len(video_paths)
+        
+        print(f"Average video duration: {avg_video_duration:.2f} seconds")
+        print(f"Total clips needed: ~{total_clips_needed}")
+        
+        if status_path:
+            update_status(status_path, 'processing', 20, f'Erstelle zufällige Video-Sequenz ({total_clips_needed} Clips)...')
+        
+        # Create concat list with random video order
+        concat_list_path = os.path.join(UPLOAD_FOLDER, f"concat_{os.path.basename(output_path)}.txt")
         temp_looped_video = os.path.join(UPLOAD_FOLDER, f"temp_looped_{os.path.basename(output_path)}")
         
-        print("Step 1: Creating looped video (fast encoding with high compression)...")
-        print(f"Estimated encoding time: {(duration * loop_count / 200):.1f} minutes")
+        # Generate random sequence
+        print("Generating random video sequence...")
+        current_time = 0
+        clip_sequence = []
+        
+        while current_time < duration:
+            # Pick random video
+            video_idx = random.randint(0, len(video_paths) - 1)
+            clip_sequence.append(video_idx)
+            current_time += video_durations[video_idx]
+        
+        print(f"Generated sequence with {len(clip_sequence)} clips")
+        print(f"Video distribution: {[clip_sequence.count(i) for i in range(len(video_paths))]}")
+        
+        # Create FFmpeg concat file
+        with open(concat_list_path, 'w') as f:
+            for video_idx in clip_sequence:
+                # Use absolute path and escape special characters
+                video_path_escaped = video_paths[video_idx].replace("'", "'\\''")
+                f.write(f"file '{video_path_escaped}'\n")
+        
+        print(f"Concat list created: {concat_list_path}")
         
         if status_path:
-            est_minutes = int((duration * loop_count / 200))
+            est_minutes = int((duration / 200))
             update_status(status_path, 'processing', 25, f'Video-Encoding läuft... (~{est_minutes} Min)')
         
-        cmd_loop = [
+        # Step 1: Concatenate videos with re-encoding (to match duration)
+        print("Step 1: Creating concatenated and looped video...")
+        start_time = time.time()
+        
+        cmd_concat = [
             'ffmpeg', '-y',
-            '-stream_loop', str(loop_count - 1),
-            '-i', video_path,
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', concat_list_path,
             '-t', str(duration),
             '-c:v', 'libx264',
-            '-preset', 'medium',  # SCHNELL: ~150-300 fps encoding
-            '-crf', '32',            # KOMPRESSION: Höher = kleiner (war 32, jetzt 35)
+            '-preset', 'veryfast',
+            '-crf', '35',
             '-profile:v', 'high',
             '-level', '4.2',
             '-pix_fmt', 'yuv420p',
-            '-maxrate', '5M',        # Bitrate etwas gesenkt (war 5M)
-            '-bufsize', '10M',        # Buffer angepasst (war 10M)
-            '-g', '250',             # GOP size
+            '-maxrate', '4M',
+            '-bufsize', '8M',
+            '-g', '250',
             '-movflags', '+faststart',
-            '-an',                   # Kein Audio im ersten Schritt
-            '-threads', '0',         # Nutze alle verfügbaren CPU-Threads
+            '-an',
+            '-threads', '0',
             temp_looped_video
         ]
         
-        print(f"Running: {' '.join(cmd_loop[:15])}...")  # Nur ersten Teil loggen
+        print(f"Running: {' '.join(cmd_concat[:10])}...")
         
-        start_time = time.time()
-        result_loop = subprocess.run(
-            cmd_loop,
+        result_concat = subprocess.run(
+            cmd_concat,
             capture_output=True,
             text=True,
-            timeout=7200  # 2 Stunden für Step 1
+            timeout=7200
         )
         
         encoding_time = time.time() - start_time
-        print(f"Encoding completed in {encoding_time/60:.1f} minutes")
+        print(f"Concatenation completed in {encoding_time/60:.1f} minutes")
         
-        if result_loop.returncode != 0:
-            print(f"FFmpeg loop stderr: {result_loop.stderr[-500:]}")  # Nur letzten Teil
-            raise Exception(f"FFmpeg loop error: {result_loop.stderr[-200:]}")
+        if result_concat.returncode != 0:
+            print(f"FFmpeg concat stderr: {result_concat.stderr[-500:]}")
+            # Cleanup
+            if os.path.exists(concat_list_path):
+                os.remove(concat_list_path)
+            raise Exception(f"FFmpeg concat error: {result_concat.stderr[-200:]}")
         
-        looped_size = os.path.getsize(temp_looped_video)
-        print(f"Looped video created: {format_size(looped_size)}")
+        # Remove concat list
+        if os.path.exists(concat_list_path):
+            os.remove(concat_list_path)
+        
+        concat_size = os.path.getsize(temp_looped_video)
+        print(f"Concatenated video created: {format_size(concat_size)}")
         
         if status_path:
             update_status(status_path, 'processing', 80, 'Audio wird hinzugefügt...')
         
-        # Step 2: Merge looped video with audio (fast - video copy)
-        print("Step 2: Merging audio with looped video...")
+        # Step 2: Merge with audio
+        print("Step 2: Merging audio with video...")
         cmd_merge = [
             'ffmpeg', '-y',
             '-i', temp_looped_video,
             '-i', audio_path,
-            '-c:v', 'copy',          # Video copy - kein Re-Encoding
+            '-c:v', 'copy',
             '-c:a', 'aac',
-            '-b:a', '96k',           # Audio-Bitrate niedrig (für LoFi OK)
+            '-b:a', '96k',
             '-ar', '44100',
             '-map', '0:v:0',
             '-map', '1:a:0',
@@ -544,27 +618,26 @@ def merge_video_audio(audio_path, video_path, output_path, status_path=None):
             cmd_merge,
             capture_output=True,
             text=True,
-            timeout=1800  # 30 Minuten für Step 2
+            timeout=1800
         )
         
         if result_merge.returncode != 0:
             print(f"FFmpeg merge stderr: {result_merge.stderr[-500:]}")
-            # Cleanup temp file
             if os.path.exists(temp_looped_video):
                 os.remove(temp_looped_video)
             raise Exception(f"FFmpeg merge error: {result_merge.stderr[-200:]}")
         
-        # Cleanup temp looped video
+        # Cleanup
         if os.path.exists(temp_looped_video):
             os.remove(temp_looped_video)
-            print("Cleaned up temporary looped video")
+            print("Cleaned up temporary video")
         
         final_size = os.path.getsize(output_path)
         total_time = time.time() - start_time
         print(f"=== MERGE COMPLETE ===")
         print(f"Final file size: {format_size(final_size)}")
         print(f"Total processing time: {total_time/60:.1f} minutes")
-        print(f"Compression ratio: {(final_size/looped_size)*100:.1f}% of uncompressed")
+        print(f"Used {len(clip_sequence)} clips from {len(video_paths)} video(s)")
         
         if status_path:
             update_status(status_path, 'processing', 95, 'Finalisierung...')
@@ -573,16 +646,22 @@ def merge_video_audio(audio_path, video_path, output_path, status_path=None):
         
     except subprocess.TimeoutExpired as e:
         print(f"FFmpeg timeout after {e.timeout} seconds")
-        # Cleanup on timeout
         if 'temp_looped_video' in locals() and os.path.exists(temp_looped_video):
             os.remove(temp_looped_video)
+        if 'concat_list_path' in locals() and os.path.exists(concat_list_path):
+            os.remove(concat_list_path)
         raise Exception(f"Video processing timeout - took longer than {e.timeout/60:.0f} minutes")
     except Exception as e:
         print(f"Merge error: {e}")
-        # Cleanup on error
+        # Cleanup
         if 'temp_looped_video' in locals() and os.path.exists(temp_looped_video):
             try:
                 os.remove(temp_looped_video)
+            except:
+                pass
+        if 'concat_list_path' in locals() and os.path.exists(concat_list_path):
+            try:
+                os.remove(concat_list_path)
             except:
                 pass
         raise
@@ -616,45 +695,65 @@ def index():
 def upload():
     """Handle file upload and start background processing"""
     audio_path = None
-    video_path = None
+    video_paths = []
     
     try:
         print("=== UPLOAD START ===")
         
         # Check files
-        if 'audio' not in request.files or 'video' not in request.files:
-            print("ERROR: Missing files in request")
-            return jsonify({'success': False, 'error': 'Audio und Video benötigt'}), 400
+        if 'audio' not in request.files:
+            print("ERROR: Missing audio file")
+            return jsonify({'success': False, 'error': 'Audio-Datei benötigt'}), 400
+        
+        if 'videos' not in request.files:
+            print("ERROR: Missing video files")
+            return jsonify({'success': False, 'error': 'Mindestens 1 Video benötigt'}), 400
         
         audio_file = request.files['audio']
-        video_file = request.files['video']
+        video_files = request.files.getlist('videos')
         
         print(f"Audio file: {audio_file.filename}")
-        print(f"Video file: {video_file.filename}")
+        print(f"Video files: {len(video_files)} file(s)")
         
-        if audio_file.filename == '' or video_file.filename == '':
-            print("ERROR: Empty filenames")
-            return jsonify({'success': False, 'error': 'Leere Dateien'}), 400
+        if audio_file.filename == '':
+            print("ERROR: Empty audio filename")
+            return jsonify({'success': False, 'error': 'Leere Audio-Datei'}), 400
+        
+        if len(video_files) == 0:
+            print("ERROR: No video files")
+            return jsonify({'success': False, 'error': 'Mindestens 1 Video benötigt'}), 400
         
         # Generate unique ID
         file_id = str(uuid.uuid4())
         print(f"Generated file_id: {file_id}")
         
-        # Save uploaded files
+        # Save audio file
         audio_ext = os.path.splitext(audio_file.filename)[1] or '.mp3'
-        video_ext = os.path.splitext(video_file.filename)[1] or '.mp4'
-        
         audio_path = os.path.join(UPLOAD_FOLDER, f"{file_id}_audio{audio_ext}")
-        video_path = os.path.join(UPLOAD_FOLDER, f"{file_id}_video{video_ext}")
-        output_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.mp4")
         
         print(f"Saving audio to: {audio_path}")
         audio_file.save(audio_path)
         print(f"Audio saved: {os.path.getsize(audio_path)} bytes")
         
-        print(f"Saving video to: {video_path}")
-        video_file.save(video_path)
-        print(f"Video saved: {os.path.getsize(video_path)} bytes")
+        # Save all video files
+        for idx, video_file in enumerate(video_files):
+            if video_file.filename == '':
+                continue
+                
+            video_ext = os.path.splitext(video_file.filename)[1] or '.mp4'
+            video_path = os.path.join(UPLOAD_FOLDER, f"{file_id}_video_{idx}{video_ext}")
+            
+            print(f"Saving video {idx+1}/{len(video_files)}: {video_file.filename}")
+            video_file.save(video_path)
+            print(f"Video {idx+1} saved: {os.path.getsize(video_path)} bytes")
+            
+            video_paths.append(video_path)
+        
+        if len(video_paths) == 0:
+            print("ERROR: No valid video files")
+            return jsonify({'success': False, 'error': 'Keine gültigen Video-Dateien'}), 400
+        
+        output_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.mp4")
         
         # Create status file
         status_path = os.path.join(OUTPUT_FOLDER, f"{file_id}_status.json")
@@ -662,27 +761,29 @@ def upload():
             'status': 'processing',
             'progress': 0,
             'message': 'Upload erfolgreich - Verarbeitung startet...',
-            'file_id': file_id
+            'file_id': file_id,
+            'video_count': len(video_paths)
         }
         with open(status_path, 'w') as f:
             json.dump(status_data, f)
         
         # Start background processing
-        print("Starting background processing thread...")
+        print(f"Starting background processing with {len(video_paths)} video(s)...")
         thread = threading.Thread(
             target=process_video_background,
-            args=(file_id, audio_path, video_path, output_path, status_path)
+            args=(file_id, audio_path, video_paths, output_path, status_path)
         )
         thread.daemon = True
         thread.start()
         
-        print(f"=== UPLOAD ACCEPTED - Processing in background ===")
+        print(f"=== UPLOAD ACCEPTED - Processing {len(video_paths)} video(s) in background ===")
         
         # Return immediately with job_id
         return jsonify({
             'success': True,
             'job_id': file_id,
-            'message': 'Upload erfolgreich - Verarbeitung läuft im Hintergrund'
+            'video_count': len(video_paths),
+            'message': f'Upload erfolgreich - {len(video_paths)} Video(s) werden verarbeitet'
         })
         
     except Exception as e:
@@ -696,23 +797,24 @@ def upload():
         try:
             if audio_path and os.path.exists(audio_path):
                 os.remove(audio_path)
-            if video_path and os.path.exists(video_path):
-                os.remove(video_path)
+            for vp in video_paths:
+                if os.path.exists(vp):
+                    os.remove(vp)
         except:
             pass
         
         return jsonify({'success': False, 'error': str(e)}), 500
 
-def process_video_background(file_id, audio_path, video_path, output_path, status_path):
+def process_video_background(file_id, audio_path, video_paths, output_path, status_path):
     """Background processing function"""
     try:
-        print(f"[Background] Starting merge for {file_id}")
+        print(f"[Background] Starting merge for {file_id} with {len(video_paths)} video(s)")
         
         # Update status: Starting
-        update_status(status_path, 'processing', 10, 'Analysiere Dateien...')
+        update_status(status_path, 'processing', 10, f'Analysiere {len(video_paths)} Video(s)...')
         
         # Merge files
-        merge_video_audio(audio_path, video_path, output_path, status_path)
+        merge_video_audio(audio_path, video_paths, output_path, status_path)
         
         # Get file info
         file_size = os.path.getsize(output_path)
@@ -722,15 +824,17 @@ def process_video_background(file_id, audio_path, video_path, output_path, statu
         print("[Background] Cleaning up input files...")
         if os.path.exists(audio_path):
             os.remove(audio_path)
-        if os.path.exists(video_path):
-            os.remove(video_path)
+        for vp in video_paths:
+            if os.path.exists(vp):
+                os.remove(vp)
         
         # Update status: Complete
         update_status(status_path, 'complete', 100, 'Video erfolgreich erstellt!', {
             'file_id': file_id,
             'size': format_size(file_size),
             'duration': format_duration(duration),
-            'file_size_bytes': file_size
+            'file_size_bytes': file_size,
+            'video_count': len(video_paths)
         })
         
         print(f"[Background] === PROCESSING COMPLETE for {file_id} ===")
@@ -747,8 +851,9 @@ def process_video_background(file_id, audio_path, video_path, output_path, statu
         try:
             if audio_path and os.path.exists(audio_path):
                 os.remove(audio_path)
-            if video_path and os.path.exists(video_path):
-                os.remove(video_path)
+            for vp in video_paths:
+                if os.path.exists(vp):
+                    os.remove(vp)
         except:
             pass
 
