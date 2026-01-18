@@ -23,6 +23,18 @@ OUTPUT_FOLDER = '/tmp/output'
 MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
 CLEANUP_AGE_HOURS = 24
 
+# Video effects mapping
+VIDEO_EFFECTS = {
+    'none': None,
+    'staub': 'noise=alls=20:allf=t+u',
+    'vignette': 'vignette=PI/5',
+    'psychedelic': 'hue=s=1.2:h=10*sin(t*0.1)',
+    'zoom': 'zoompan=z=\'zoom+0.001\':d=250',
+    'glitch': 'gblur=sigma=2:steps=1',
+    'noir': 'eq=brightness=-0.1:contrast=1.2',
+    'warm': 'colorbalance=rs=0.1:gs=-0.05:bs=-0.1'
+}
+
 # Create folders
 Path(UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
 Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
@@ -236,6 +248,25 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
             
+            <div class="upload-section">
+                <label style="display: block; font-weight: bold; color: #667eea; margin-bottom: 10px;">
+                    ✨ Video-Effekt (Optional)
+                </label>
+                <select id="effectSelect" style="width: 100%; padding: 12px; border: 2px solid #667eea; border-radius: 8px; font-size: 1em; background: white; cursor: pointer;">
+                    <option value="none">Kein Effekt</option>
+                    <option value="staub">🌫️ Staub / Film Grain</option>
+                    <option value="vignette">🎬 Vignette (Dunkle Ränder)</option>
+                    <option value="psychedelic">🌈 Psychedelisch</option>
+                    <option value="zoom">🔍 Langsamer Zoom</option>
+                    <option value="glitch">⚡ Glitch / Blur</option>
+                    <option value="noir">🖤 Noir / Film</option>
+                    <option value="warm">🔥 Warm / Vintage</option>
+                </select>
+                <div style="margin-top: 8px; font-size: 0.85em; color: #666;">
+                    Der Effekt wird über das gesamte Video gelegt
+                </div>
+            </div>
+            
             <button class="btn" id="submitBtn" disabled onclick="handleUpload()">Video erstellen</button>
         </div>
         
@@ -323,13 +354,20 @@ HTML_TEMPLATE = '''
                 formData.append('videos', videoInput.files[i]);
             }
             
+            // Append selected effect
+            const selectedEffect = document.getElementById('effectSelect').value;
+            formData.append('effect', selectedEffect);
+            
             resultDiv.style.display = 'block';
             resultDiv.className = 'result loading';
+            
+            const effectText = selectedEffect !== 'none' ? ` + ${selectedEffect} Effekt` : '';
+            
             resultDiv.innerHTML = `
                 <div class="spinner"></div>
                 <div><strong>Dateien werden hochgeladen...</strong></div>
                 <div style="margin-top: 10px;">
-                    1 Audio + ${videoInput.files.length} Video${videoInput.files.length > 1 ? 's' : ''}
+                    1 Audio + ${videoInput.files.length} Video${videoInput.files.length > 1 ? 's' : ''}${effectText}
                 </div>
             `;
             
@@ -353,12 +391,17 @@ HTML_TEMPLATE = '''
                 const jobId = result.job_id;
                 console.log('Job ID:', jobId);
                 
+                const effectInfo = result.effect && result.effect !== 'none' 
+                    ? `<div style="margin-top: 5px; color: #764ba2;">✨ Effekt: ${result.effect}</div>` 
+                    : '';
+                
                 resultDiv.innerHTML = `
                     <div class="spinner"></div>
                     <div><strong>Upload erfolgreich!</strong></div>
                     <div style="margin-top: 5px; color: #667eea; font-weight: bold;">
                         ${result.video_count} Videos werden zufällig gemischt!
                     </div>
+                    ${effectInfo}
                     <div id="statusMessage" style="margin-top: 10px;">Verarbeitung startet...</div>
                     <div style="margin-top: 15px; background: #e0e0e0; border-radius: 10px; height: 20px; overflow: hidden;">
                         <div id="progressBar" style="background: linear-gradient(90deg, #667eea, #764ba2); height: 100%; width: 0%; transition: width 0.3s;"></div>
@@ -391,6 +434,10 @@ HTML_TEMPLATE = '''
                         if (statusData.status === 'complete') {
                             clearInterval(pollInterval);
                             
+                            const effectBadge = statusData.effect && statusData.effect !== 'none'
+                                ? `<br><span style="color: #764ba2;">✨ Mit ${statusData.effect} Effekt</span>`
+                                : '';
+                            
                             resultDiv.className = 'result success';
                             resultDiv.innerHTML = `
                                 <div style="text-align: center;">
@@ -399,7 +446,7 @@ HTML_TEMPLATE = '''
                                     <div style="margin: 10px 0;">
                                         Größe: ${statusData.size}<br>
                                         Dauer: ${statusData.duration}<br>
-                                        <span style="color: #667eea;">🎲 ${statusData.video_count || 1} Videos zufällig gemischt</span>
+                                        <span style="color: #667eea;">🎲 ${statusData.video_count || 1} Videos zufällig gemischt</span>${effectBadge}
                                     </div>
                                     <a href="/download/${statusData.file_id}" class="download-btn" download>
                                         ⬇️ Video herunterladen
@@ -475,8 +522,8 @@ def format_size(bytes):
         bytes /= 1024.0
     return f"{bytes:.2f} TB"
 
-def merge_video_audio(audio_path, video_paths, output_path, status_path=None):
-    """Merge video and audio - with random video mixing if multiple videos"""
+def merge_video_audio(audio_path, video_paths, output_path, status_path=None, effect='none'):
+    """Merge video and audio - with random video mixing and optional effects"""
     import random
     
     try:
@@ -486,9 +533,11 @@ def merge_video_audio(audio_path, video_paths, output_path, status_path=None):
         
         # Handle single or multiple videos
         if isinstance(video_paths, str):
-            video_paths = [video_paths]  # Convert single path to list
+            video_paths = [video_paths]
         
         print(f"Processing with {len(video_paths)} video file(s)")
+        if effect != 'none':
+            print(f"Applying effect: {effect}")
         
         # Get duration of each video
         video_durations = []
@@ -498,9 +547,10 @@ def merge_video_audio(audio_path, video_paths, output_path, status_path=None):
             print(f"Video {idx+1} duration: {vd} seconds")
         
         if status_path:
-            update_status(status_path, 'processing', 15, f'{len(video_paths)} Video(s) werden analysiert...')
+            effect_text = f' + {effect} Effekt' if effect != 'none' else ''
+            update_status(status_path, 'processing', 15, f'{len(video_paths)} Video(s) werden analysiert{effect_text}...')
         
-        # Calculate how many clips we need total
+        # Calculate clips needed
         avg_video_duration = sum(video_durations) / len(video_durations)
         total_clips_needed = int(duration / avg_video_duration) + len(video_paths)
         
@@ -510,7 +560,7 @@ def merge_video_audio(audio_path, video_paths, output_path, status_path=None):
         if status_path:
             update_status(status_path, 'processing', 20, f'Erstelle zufällige Video-Sequenz ({total_clips_needed} Clips)...')
         
-        # Create concat list with random video order
+        # Create paths
         concat_list_path = os.path.join(UPLOAD_FOLDER, f"concat_{os.path.basename(output_path)}.txt")
         temp_looped_video = os.path.join(UPLOAD_FOLDER, f"temp_looped_{os.path.basename(output_path)}")
         
@@ -520,7 +570,6 @@ def merge_video_audio(audio_path, video_paths, output_path, status_path=None):
         clip_sequence = []
         
         while current_time < duration:
-            # Pick random video
             video_idx = random.randint(0, len(video_paths) - 1)
             clip_sequence.append(video_idx)
             current_time += video_durations[video_idx]
@@ -531,7 +580,6 @@ def merge_video_audio(audio_path, video_paths, output_path, status_path=None):
         # Create FFmpeg concat file
         with open(concat_list_path, 'w') as f:
             for video_idx in clip_sequence:
-                # Use absolute path and escape special characters
                 video_path_escaped = video_paths[video_idx].replace("'", "'\\''")
                 f.write(f"file '{video_path_escaped}'\n")
         
@@ -539,18 +587,31 @@ def merge_video_audio(audio_path, video_paths, output_path, status_path=None):
         
         if status_path:
             est_minutes = int((duration / 200))
-            update_status(status_path, 'processing', 25, f'Video-Encoding läuft... (~{est_minutes} Min)')
+            effect_note = f' ({effect} Effekt)' if effect != 'none' else ''
+            update_status(status_path, 'processing', 25, f'Video-Encoding läuft{effect_note}... (~{est_minutes} Min)')
         
-        # Step 1: Concatenate videos with re-encoding (to match duration)
-        print("Step 1: Creating concatenated and looped video...")
+        # Step 1: Concatenate videos with optional effect
+        print("Step 1: Creating concatenated video with optional effect...")
         start_time = time.time()
         
+        # Build FFmpeg command with optional video filter
         cmd_concat = [
             'ffmpeg', '-y',
             '-f', 'concat',
             '-safe', '0',
             '-i', concat_list_path,
-            '-t', str(duration),
+            '-t', str(duration)
+        ]
+        
+        # Add video filter if effect is selected
+        if effect != 'none' and effect in VIDEO_EFFECTS and VIDEO_EFFECTS[effect]:
+            print(f"Applying video filter: {VIDEO_EFFECTS[effect]}")
+            cmd_concat.extend([
+                '-vf', VIDEO_EFFECTS[effect]
+            ])
+        
+        # Add encoding parameters
+        cmd_concat.extend([
             '-c:v', 'libx264',
             '-preset', 'veryfast',
             '-crf', '35',
@@ -564,7 +625,7 @@ def merge_video_audio(audio_path, video_paths, output_path, status_path=None):
             '-an',
             '-threads', '0',
             temp_looped_video
-        ]
+        ])
         
         print(f"Running: {' '.join(cmd_concat[:10])}...")
         
@@ -580,7 +641,6 @@ def merge_video_audio(audio_path, video_paths, output_path, status_path=None):
         
         if result_concat.returncode != 0:
             print(f"FFmpeg concat stderr: {result_concat.stderr[-500:]}")
-            # Cleanup
             if os.path.exists(concat_list_path):
                 os.remove(concat_list_path)
             raise Exception(f"FFmpeg concat error: {result_concat.stderr[-200:]}")
@@ -638,6 +698,8 @@ def merge_video_audio(audio_path, video_paths, output_path, status_path=None):
         print(f"Final file size: {format_size(final_size)}")
         print(f"Total processing time: {total_time/60:.1f} minutes")
         print(f"Used {len(clip_sequence)} clips from {len(video_paths)} video(s)")
+        if effect != 'none':
+            print(f"Applied effect: {effect}")
         
         if status_path:
             update_status(status_path, 'processing', 95, 'Finalisierung...')
@@ -653,7 +715,6 @@ def merge_video_audio(audio_path, video_paths, output_path, status_path=None):
         raise Exception(f"Video processing timeout - took longer than {e.timeout/60:.0f} minutes")
     except Exception as e:
         print(f"Merge error: {e}")
-        # Cleanup
         if 'temp_looped_video' in locals() and os.path.exists(temp_looped_video):
             try:
                 os.remove(temp_looped_video)
@@ -712,8 +773,14 @@ def upload():
         audio_file = request.files['audio']
         video_files = request.files.getlist('videos')
         
+        # Get selected effect
+        effect = request.form.get('effect', 'none')
+        if effect not in VIDEO_EFFECTS:
+            effect = 'none'
+        
         print(f"Audio file: {audio_file.filename}")
         print(f"Video files: {len(video_files)} file(s)")
+        print(f"Selected effect: {effect}")
         
         if audio_file.filename == '':
             print("ERROR: Empty audio filename")
@@ -762,16 +829,17 @@ def upload():
             'progress': 0,
             'message': 'Upload erfolgreich - Verarbeitung startet...',
             'file_id': file_id,
-            'video_count': len(video_paths)
+            'video_count': len(video_paths),
+            'effect': effect
         }
         with open(status_path, 'w') as f:
             json.dump(status_data, f)
         
         # Start background processing
-        print(f"Starting background processing with {len(video_paths)} video(s)...")
+        print(f"Starting background processing with {len(video_paths)} video(s) and '{effect}' effect...")
         thread = threading.Thread(
             target=process_video_background,
-            args=(file_id, audio_path, video_paths, output_path, status_path)
+            args=(file_id, audio_path, video_paths, output_path, status_path, effect)
         )
         thread.daemon = True
         thread.start()
@@ -783,6 +851,7 @@ def upload():
             'success': True,
             'job_id': file_id,
             'video_count': len(video_paths),
+            'effect': effect,
             'message': f'Upload erfolgreich - {len(video_paths)} Video(s) werden verarbeitet'
         })
         
@@ -805,16 +874,17 @@ def upload():
         
         return jsonify({'success': False, 'error': str(e)}), 500
 
-def process_video_background(file_id, audio_path, video_paths, output_path, status_path):
+def process_video_background(file_id, audio_path, video_paths, output_path, status_path, effect='none'):
     """Background processing function"""
     try:
-        print(f"[Background] Starting merge for {file_id} with {len(video_paths)} video(s)")
+        print(f"[Background] Starting merge for {file_id} with {len(video_paths)} video(s) and '{effect}' effect")
         
         # Update status: Starting
-        update_status(status_path, 'processing', 10, f'Analysiere {len(video_paths)} Video(s)...')
+        effect_text = f' mit {effect} Effekt' if effect != 'none' else ''
+        update_status(status_path, 'processing', 10, f'Analysiere {len(video_paths)} Video(s){effect_text}...')
         
         # Merge files
-        merge_video_audio(audio_path, video_paths, output_path, status_path)
+        merge_video_audio(audio_path, video_paths, output_path, status_path, effect)
         
         # Get file info
         file_size = os.path.getsize(output_path)
@@ -834,7 +904,8 @@ def process_video_background(file_id, audio_path, video_paths, output_path, stat
             'size': format_size(file_size),
             'duration': format_duration(duration),
             'file_size_bytes': file_size,
-            'video_count': len(video_paths)
+            'video_count': len(video_paths),
+            'effect': effect
         })
         
         print(f"[Background] === PROCESSING COMPLETE for {file_id} ===")
