@@ -249,9 +249,17 @@ HTML_TEMPLATE = '''
 <body>
     <div class="container">
         <h1>🎬 Video-Audio Merger</h1>
-        <p class="subtitle">Füge Audio zu deinem Video-Loop hinzu</p>
+        <p class="subtitle">Füge Audio zu deinem Video-Loop oder Standbild hinzu</p>
         
         <div id="uploadForm">
+            <div class="mode-selector">
+                <button type="button" class="mode-btn active" id="videoModeBtn" onclick="switchMode('video')">
+                    🎥 Video-Loops
+                </button>
+                <button type="button" class="mode-btn" id="imageModeBtn" onclick="switchMode('image')">
+                    🖼️ Standbild
+                </button>
+            </div>
             <div class="upload-section">
                 <div class="upload-box" id="audioBox" onclick="document.getElementById('audioInput').click()">
                     <div class="upload-icon">🎵</div>
