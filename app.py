@@ -310,10 +310,12 @@ HTML_TEMPLATE = '''
         <div class="info-box">
             <h3>ℹ️ Hinweise</h3>
             <ul>
-                <li>Das Video wird automatisch geloopt bis zur Audio-Länge</li>
+                <li><strong>Video-Loops:</strong> Werden automatisch geloopt bis zur Audio-Länge</li>
                 <li>🎲 <strong>Mehrere Videos:</strong> Werden zufällig gemischt für mehr Abwechslung!</li>
-                <li>Maximale Dateigröße: 500 MB pro Datei</li>
-                <li>Verarbeitung kann 20-30 Minuten dauern (je nach Audio-Länge)</li>
+                <li><strong>Standbild:</strong> Ein Bild wird für das gesamte Video verwendet</li>
+                <li>✨ <strong>Effekte:</strong> Können mit Videos und Standbildern kombiniert werden</li>
+                <li>Maximale Dateigröße: 500 MB (Audio/Video), 50 MB (Bild)</li>
+                <li>Verarbeitung: Videos 20-30 Min, Standbilder 5-10 Min</li>
                 <li>Dateien werden nach 24h automatisch gelöscht</li>
             </ul>
         </div>
