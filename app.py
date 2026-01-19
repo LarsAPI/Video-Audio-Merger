@@ -80,6 +80,33 @@ HTML_TEMPLATE = '''
             color: #666;
             margin-bottom: 30px;
         }
+        .mode-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            background: #f0f1ff;
+            padding: 10px;
+            border-radius: 10px;
+        }
+        .mode-btn {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #667eea;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .mode-btn:hover {
+            background: #f8f9ff;
+        }
+        .mode-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: #764ba2;
+        }
         .upload-section {
             margin: 20px 0;
         }
@@ -332,26 +359,43 @@ HTML_TEMPLATE = '''
         
         async function handleUpload() {
             const maxSize = 500 * 1024 * 1024;
+            const maxImageSize = 50 * 1024 * 1024;
             
             if (audioInput.files[0].size > maxSize) {
                 showError(`Audio-Datei zu groß: ${formatFileSize(audioInput.files[0].size)} (max 500 MB)`);
                 return;
             }
             
-            // Check all video files
-            for (let i = 0; i < videoInput.files.length; i++) {
-                if (videoInput.files[i].size > maxSize) {
-                    showError(`Video ${i+1} zu groß: ${formatFileSize(videoInput.files[i].size)} (max 500 MB)`);
-                    return;
-                }
-            }
-            
             const formData = new FormData();
             formData.append('audio', audioInput.files[0]);
+            formData.append('mode', currentMode);
             
-            // Append all video files
-            for (let i = 0; i < videoInput.files.length; i++) {
-                formData.append('videos', videoInput.files[i]);
+            let uploadDescription = '';
+            
+            if (currentMode === 'video') {
+                // Video mode - check all videos
+                for (let i = 0; i < videoInput.files.length; i++) {
+                    if (videoInput.files[i].size > maxSize) {
+                        showError(`Video ${i+1} zu groß: ${formatFileSize(videoInput.files[i].size)} (max 500 MB)`);
+                        return;
+                    }
+                }
+                
+                // Append all video files
+                for (let i = 0; i < videoInput.files.length; i++) {
+                    formData.append('videos', videoInput.files[i]);
+                }
+                
+                uploadDescription = `1 Audio + ${videoInput.files.length} Video${videoInput.files.length > 1 ? 's' : ''}`;
+            } else {
+                // Image mode - check image
+                if (imageInput.files[0].size > maxImageSize) {
+                    showError(`Bild zu groß: ${formatFileSize(imageInput.files[0].size)} (max 50 MB)`);
+                    return;
+                }
+                
+                formData.append('image', imageInput.files[0]);
+                uploadDescription = `1 Audio + 1 Standbild`;
             }
             
             // Append selected effect
@@ -367,7 +411,7 @@ HTML_TEMPLATE = '''
                 <div class="spinner"></div>
                 <div><strong>Dateien werden hochgeladen...</strong></div>
                 <div style="margin-top: 10px;">
-                    1 Audio + ${videoInput.files.length} Video${videoInput.files.length > 1 ? 's' : ''}${effectText}
+                    ${uploadDescription}${effectText}
                 </div>
             `;
             
@@ -391,6 +435,13 @@ HTML_TEMPLATE = '''
                 const jobId = result.job_id;
                 console.log('Job ID:', jobId);
                 
+                let modeInfo = '';
+                if (result.mode === 'image') {
+                    modeInfo = '<div style="margin-top: 5px; color: #667eea; font-weight: bold;">🖼️ Standbild-Modus</div>';
+                } else if (result.video_count) {
+                    modeInfo = `<div style="margin-top: 5px; color: #667eea; font-weight: bold;">${result.video_count} Videos werden zufällig gemischt!</div>`;
+                }
+                
                 const effectInfo = result.effect && result.effect !== 'none' 
                     ? `<div style="margin-top: 5px; color: #764ba2;">✨ Effekt: ${result.effect}</div>` 
                     : '';
@@ -398,9 +449,7 @@ HTML_TEMPLATE = '''
                 resultDiv.innerHTML = `
                     <div class="spinner"></div>
                     <div><strong>Upload erfolgreich!</strong></div>
-                    <div style="margin-top: 5px; color: #667eea; font-weight: bold;">
-                        ${result.video_count} Videos werden zufällig gemischt!
-                    </div>
+                    ${modeInfo}
                     ${effectInfo}
                     <div id="statusMessage" style="margin-top: 10px;">Verarbeitung startet...</div>
                     <div style="margin-top: 15px; background: #e0e0e0; border-radius: 10px; height: 20px; overflow: hidden;">
@@ -434,6 +483,13 @@ HTML_TEMPLATE = '''
                         if (statusData.status === 'complete') {
                             clearInterval(pollInterval);
                             
+                            let modeBadge = '';
+                            if (statusData.mode === 'image') {
+                                modeBadge = '<br><span style="color: #667eea;">🖼️ Standbild-Modus</span>';
+                            } else if (statusData.video_count) {
+                                modeBadge = `<br><span style="color: #667eea;">🎲 ${statusData.video_count} Videos zufällig gemischt</span>`;
+                            }
+                            
                             const effectBadge = statusData.effect && statusData.effect !== 'none'
                                 ? `<br><span style="color: #764ba2;">✨ Mit ${statusData.effect} Effekt</span>`
                                 : '';
@@ -445,8 +501,7 @@ HTML_TEMPLATE = '''
                                     <div><strong>Video erfolgreich erstellt!</strong></div>
                                     <div style="margin: 10px 0;">
                                         Größe: ${statusData.size}<br>
-                                        Dauer: ${statusData.duration}<br>
-                                        <span style="color: #667eea;">🎲 ${statusData.video_count || 1} Videos zufällig gemischt</span>${effectBadge}
+                                        Dauer: ${statusData.duration}${modeBadge}${effectBadge}
                                     </div>
                                     <a href="/download/${statusData.file_id}" class="download-btn" download>
                                         ⬇️ Video herunterladen
@@ -522,7 +577,146 @@ def format_size(bytes):
         bytes /= 1024.0
     return f"{bytes:.2f} TB"
 
-def merge_video_audio(audio_path, video_paths, output_path, status_path=None, effect='none'):
+def merge_video_audio_from_image(audio_path, image_path, output_path, status_path=None, effect='none'):
+    """Create video from static image with audio and optional effects"""
+    try:
+        # Get audio duration
+        duration = get_video_duration(audio_path)
+        print(f"Audio duration: {duration} seconds ({duration/60:.1f} minutes)")
+        print(f"Creating video from image: {image_path}")
+        
+        if effect != 'none':
+            print(f"Applying effect: {effect}")
+        
+        if status_path:
+            effect_text = f' + {effect} Effekt' if effect != 'none' else ''
+            update_status(status_path, 'processing', 20, f'Erstelle Video aus Standbild{effect_text}...')
+        
+        temp_video = os.path.join(UPLOAD_FOLDER, f"temp_image_video_{os.path.basename(output_path)}")
+        
+        print("Step 1: Creating video from image...")
+        start_time = time.time()
+        
+        # Build FFmpeg command
+        cmd_image_to_video = [
+            'ffmpeg', '-y',
+            '-loop', '1',
+            '-i', image_path,
+            '-t', str(duration)
+        ]
+        
+        # Add video filter if effect is selected
+        if effect != 'none' and effect in VIDEO_EFFECTS and VIDEO_EFFECTS[effect]:
+            print(f"Applying video filter: {VIDEO_EFFECTS[effect]}")
+            cmd_image_to_video.extend([
+                '-vf', VIDEO_EFFECTS[effect]
+            ])
+        
+        # Add encoding parameters
+        cmd_image_to_video.extend([
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-crf', '35',
+            '-profile:v', 'high',
+            '-level', '4.2',
+            '-pix_fmt', 'yuv420p',
+            '-maxrate', '4M',
+            '-bufsize', '8M',
+            '-g', '250',
+            '-movflags', '+faststart',
+            '-threads', '0',
+            temp_video
+        ])
+        
+        print(f"Running: {' '.join(cmd_image_to_video[:10])}...")
+        
+        if status_path:
+            est_minutes = int((duration / 300))  # Images are faster to encode
+            update_status(status_path, 'processing', 30, f'Video-Encoding läuft... (~{est_minutes} Min)')
+        
+        result_video = subprocess.run(
+            cmd_image_to_video,
+            capture_output=True,
+            text=True,
+            timeout=3600
+        )
+        
+        encoding_time = time.time() - start_time
+        print(f"Video creation completed in {encoding_time/60:.1f} minutes")
+        
+        if result_video.returncode != 0:
+            print(f"FFmpeg stderr: {result_video.stderr[-500:]}")
+            raise Exception(f"FFmpeg error: {result_video.stderr[-200:]}")
+        
+        video_size = os.path.getsize(temp_video)
+        print(f"Video created: {format_size(video_size)}")
+        
+        if status_path:
+            update_status(status_path, 'processing', 80, 'Audio wird hinzugefügt...')
+        
+        # Step 2: Merge with audio
+        print("Step 2: Merging audio with video...")
+        cmd_merge = [
+            'ffmpeg', '-y',
+            '-i', temp_video,
+            '-i', audio_path,
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-b:a', '96k',
+            '-ar', '44100',
+            '-map', '0:v:0',
+            '-map', '1:a:0',
+            '-shortest',
+            '-movflags', '+faststart',
+            output_path
+        ]
+        
+        print(f"Running: {' '.join(cmd_merge[:10])}...")
+        
+        result_merge = subprocess.run(
+            cmd_merge,
+            capture_output=True,
+            text=True,
+            timeout=1800
+        )
+        
+        if result_merge.returncode != 0:
+            print(f"FFmpeg merge stderr: {result_merge.stderr[-500:]}")
+            if os.path.exists(temp_video):
+                os.remove(temp_video)
+            raise Exception(f"FFmpeg merge error: {result_merge.stderr[-200:]}")
+        
+        # Cleanup
+        if os.path.exists(temp_video):
+            os.remove(temp_video)
+            print("Cleaned up temporary video")
+        
+        final_size = os.path.getsize(output_path)
+        total_time = time.time() - start_time
+        print(f"=== IMAGE VIDEO COMPLETE ===")
+        print(f"Final file size: {format_size(final_size)}")
+        print(f"Total processing time: {total_time/60:.1f} minutes")
+        if effect != 'none':
+            print(f"Applied effect: {effect}")
+        
+        if status_path:
+            update_status(status_path, 'processing', 95, 'Finalisierung...')
+        
+        return True
+        
+    except subprocess.TimeoutExpired as e:
+        print(f"FFmpeg timeout after {e.timeout} seconds")
+        if 'temp_video' in locals() and os.path.exists(temp_video):
+            os.remove(temp_video)
+        raise Exception(f"Video processing timeout - took longer than {e.timeout/60:.0f} minutes")
+    except Exception as e:
+        print(f"Image merge error: {e}")
+        if 'temp_video' in locals() and os.path.exists(temp_video):
+            try:
+                os.remove(temp_video)
+            except:
+                pass
+        raise
     """Merge video and audio - with random video mixing and optional effects"""
     import random
     
@@ -757,38 +951,31 @@ def upload():
     """Handle file upload and start background processing"""
     audio_path = None
     video_paths = []
+    image_path = None
     
     try:
         print("=== UPLOAD START ===")
         
-        # Check files
+        # Check audio file
         if 'audio' not in request.files:
             print("ERROR: Missing audio file")
             return jsonify({'success': False, 'error': 'Audio-Datei benötigt'}), 400
         
-        if 'videos' not in request.files:
-            print("ERROR: Missing video files")
-            return jsonify({'success': False, 'error': 'Mindestens 1 Video benötigt'}), 400
-        
         audio_file = request.files['audio']
-        video_files = request.files.getlist('videos')
+        mode = request.form.get('mode', 'video')  # 'video' or 'image'
         
-        # Get selected effect
-        effect = request.form.get('effect', 'none')
-        if effect not in VIDEO_EFFECTS:
-            effect = 'none'
-        
+        print(f"Mode: {mode}")
         print(f"Audio file: {audio_file.filename}")
-        print(f"Video files: {len(video_files)} file(s)")
-        print(f"Selected effect: {effect}")
         
         if audio_file.filename == '':
             print("ERROR: Empty audio filename")
             return jsonify({'success': False, 'error': 'Leere Audio-Datei'}), 400
         
-        if len(video_files) == 0:
-            print("ERROR: No video files")
-            return jsonify({'success': False, 'error': 'Mindestens 1 Video benötigt'}), 400
+        # Get selected effect
+        effect = request.form.get('effect', 'none')
+        if effect not in VIDEO_EFFECTS:
+            effect = 'none'
+        print(f"Selected effect: {effect}")
         
         # Generate unique ID
         file_id = str(uuid.uuid4())
@@ -802,23 +989,55 @@ def upload():
         audio_file.save(audio_path)
         print(f"Audio saved: {os.path.getsize(audio_path)} bytes")
         
-        # Save all video files
-        for idx, video_file in enumerate(video_files):
-            if video_file.filename == '':
-                continue
+        # Handle mode-specific files
+        if mode == 'image':
+            # Image mode - single image
+            if 'image' not in request.files:
+                print("ERROR: Missing image file")
+                return jsonify({'success': False, 'error': 'Standbild benötigt'}), 400
+            
+            image_file = request.files['image']
+            if image_file.filename == '':
+                print("ERROR: Empty image filename")
+                return jsonify({'success': False, 'error': 'Leeres Standbild'}), 400
+            
+            image_ext = os.path.splitext(image_file.filename)[1] or '.jpg'
+            image_path = os.path.join(UPLOAD_FOLDER, f"{file_id}_image{image_ext}")
+            
+            print(f"Saving image: {image_file.filename}")
+            image_file.save(image_path)
+            print(f"Image saved: {os.path.getsize(image_path)} bytes")
+            
+        else:
+            # Video mode - multiple videos
+            if 'videos' not in request.files:
+                print("ERROR: Missing video files")
+                return jsonify({'success': False, 'error': 'Mindestens 1 Video benötigt'}), 400
+            
+            video_files = request.files.getlist('videos')
+            print(f"Video files: {len(video_files)} file(s)")
+            
+            if len(video_files) == 0:
+                print("ERROR: No video files")
+                return jsonify({'success': False, 'error': 'Mindestens 1 Video benötigt'}), 400
+            
+            # Save all video files
+            for idx, video_file in enumerate(video_files):
+                if video_file.filename == '':
+                    continue
+                    
+                video_ext = os.path.splitext(video_file.filename)[1] or '.mp4'
+                video_path = os.path.join(UPLOAD_FOLDER, f"{file_id}_video_{idx}{video_ext}")
                 
-            video_ext = os.path.splitext(video_file.filename)[1] or '.mp4'
-            video_path = os.path.join(UPLOAD_FOLDER, f"{file_id}_video_{idx}{video_ext}")
+                print(f"Saving video {idx+1}/{len(video_files)}: {video_file.filename}")
+                video_file.save(video_path)
+                print(f"Video {idx+1} saved: {os.path.getsize(video_path)} bytes")
+                
+                video_paths.append(video_path)
             
-            print(f"Saving video {idx+1}/{len(video_files)}: {video_file.filename}")
-            video_file.save(video_path)
-            print(f"Video {idx+1} saved: {os.path.getsize(video_path)} bytes")
-            
-            video_paths.append(video_path)
-        
-        if len(video_paths) == 0:
-            print("ERROR: No valid video files")
-            return jsonify({'success': False, 'error': 'Keine gültigen Video-Dateien'}), 400
+            if len(video_paths) == 0:
+                print("ERROR: No valid video files")
+                return jsonify({'success': False, 'error': 'Keine gültigen Video-Dateien'}), 400
         
         output_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.mp4")
         
@@ -829,31 +1048,43 @@ def upload():
             'progress': 0,
             'message': 'Upload erfolgreich - Verarbeitung startet...',
             'file_id': file_id,
-            'video_count': len(video_paths),
+            'mode': mode,
             'effect': effect
         }
+        
+        if mode == 'video':
+            status_data['video_count'] = len(video_paths)
+        
         with open(status_path, 'w') as f:
             json.dump(status_data, f)
         
         # Start background processing
-        print(f"Starting background processing with {len(video_paths)} video(s) and '{effect}' effect...")
+        mode_desc = f"Standbild" if mode == 'image' else f"{len(video_paths)} video(s)"
+        print(f"Starting background processing with {mode_desc} and '{effect}' effect...")
+        
         thread = threading.Thread(
             target=process_video_background,
-            args=(file_id, audio_path, video_paths, output_path, status_path, effect)
+            args=(file_id, audio_path, video_paths if mode == 'video' else None, 
+                  image_path if mode == 'image' else None, output_path, status_path, effect, mode)
         )
         thread.daemon = True
         thread.start()
         
-        print(f"=== UPLOAD ACCEPTED - Processing {len(video_paths)} video(s) in background ===")
+        print(f"=== UPLOAD ACCEPTED - Processing {mode_desc} in background ===")
         
         # Return immediately with job_id
-        return jsonify({
+        response_data = {
             'success': True,
             'job_id': file_id,
-            'video_count': len(video_paths),
+            'mode': mode,
             'effect': effect,
-            'message': f'Upload erfolgreich - {len(video_paths)} Video(s) werden verarbeitet'
-        })
+            'message': f'Upload erfolgreich'
+        }
+        
+        if mode == 'video':
+            response_data['video_count'] = len(video_paths)
+        
+        return jsonify(response_data)
         
     except Exception as e:
         print(f"=== UPLOAD ERROR ===")
@@ -869,22 +1100,30 @@ def upload():
             for vp in video_paths:
                 if os.path.exists(vp):
                     os.remove(vp)
+            if image_path and os.path.exists(image_path):
+                os.remove(image_path)
         except:
             pass
         
         return jsonify({'success': False, 'error': str(e)}), 500
 
-def process_video_background(file_id, audio_path, video_paths, output_path, status_path, effect='none'):
+def process_video_background(file_id, audio_path, video_paths, image_path, output_path, status_path, effect='none', mode='video'):
     """Background processing function"""
     try:
-        print(f"[Background] Starting merge for {file_id} with {len(video_paths)} video(s) and '{effect}' effect")
+        mode_desc = "Standbild" if mode == 'image' else f"{len(video_paths)} video(s)"
+        print(f"[Background] Starting merge for {file_id} with {mode_desc} and '{effect}' effect")
         
         # Update status: Starting
         effect_text = f' mit {effect} Effekt' if effect != 'none' else ''
-        update_status(status_path, 'processing', 10, f'Analysiere {len(video_paths)} Video(s){effect_text}...')
         
-        # Merge files
-        merge_video_audio(audio_path, video_paths, output_path, status_path, effect)
+        if mode == 'image':
+            update_status(status_path, 'processing', 10, f'Standbild wird verarbeitet{effect_text}...')
+            # Create video from image
+            merge_video_audio_from_image(audio_path, image_path, output_path, status_path, effect)
+        else:
+            update_status(status_path, 'processing', 10, f'Analysiere {len(video_paths)} Video(s){effect_text}...')
+            # Merge videos
+            merge_video_audio(audio_path, video_paths, output_path, status_path, effect)
         
         # Get file info
         file_size = os.path.getsize(output_path)
@@ -894,19 +1133,29 @@ def process_video_background(file_id, audio_path, video_paths, output_path, stat
         print("[Background] Cleaning up input files...")
         if os.path.exists(audio_path):
             os.remove(audio_path)
-        for vp in video_paths:
-            if os.path.exists(vp):
-                os.remove(vp)
+        
+        if mode == 'video':
+            for vp in video_paths:
+                if os.path.exists(vp):
+                    os.remove(vp)
+        else:
+            if image_path and os.path.exists(image_path):
+                os.remove(image_path)
         
         # Update status: Complete
-        update_status(status_path, 'complete', 100, 'Video erfolgreich erstellt!', {
+        complete_data = {
             'file_id': file_id,
             'size': format_size(file_size),
             'duration': format_duration(duration),
             'file_size_bytes': file_size,
-            'video_count': len(video_paths),
-            'effect': effect
-        })
+            'effect': effect,
+            'mode': mode
+        }
+        
+        if mode == 'video':
+            complete_data['video_count'] = len(video_paths)
+        
+        update_status(status_path, 'complete', 100, 'Video erfolgreich erstellt!', complete_data)
         
         print(f"[Background] === PROCESSING COMPLETE for {file_id} ===")
         
@@ -922,9 +1171,12 @@ def process_video_background(file_id, audio_path, video_paths, output_path, stat
         try:
             if audio_path and os.path.exists(audio_path):
                 os.remove(audio_path)
-            for vp in video_paths:
-                if os.path.exists(vp):
-                    os.remove(vp)
+            if mode == 'video' and video_paths:
+                for vp in video_paths:
+                    if os.path.exists(vp):
+                        os.remove(vp)
+            if mode == 'image' and image_path and os.path.exists(image_path):
+                os.remove(image_path)
         except:
             pass
 
