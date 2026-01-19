@@ -283,6 +283,16 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
             
+            <div class="upload-section" id="imageSectionBox" style="display: none;">
+                <div class="upload-box" id="imageBox" onclick="document.getElementById('imageInput').click()">
+                    <div class="upload-icon">🖼️</div>
+                    <div class="upload-label">Standbild hochladen</div>
+                    <div class="upload-hint">JPG, PNG, GIF (max 50 MB)</div>
+                    <div class="file-info" id="imageInfo"></div>
+                    <input type="file" id="imageInput" name="image" accept="image/*">
+                </div>
+            </div>
+            
             <div class="upload-section">
                 <label style="display: block; font-weight: bold; color: #667eea; margin-bottom: 10px;">
                     ✨ Video-Effekt (Optional)
@@ -331,6 +341,44 @@ HTML_TEMPLATE = '''
         const submitBtn = document.getElementById('submitBtn');
         const resultDiv = document.getElementById('result');
         
+        // Mode management
+        const imageInput = document.getElementById('imageInput');
+        const imageBox = document.getElementById('imageBox');
+        const imageInfo = document.getElementById('imageInfo');
+        const imageSectionBox = document.getElementById('imageSectionBox');
+        const videoSectionBox = document.querySelector('[id="videoBox"]').closest('.upload-section');
+        let currentMode = 'video';
+        
+        function switchMode(mode) {
+            currentMode = mode;
+            const videoModeBtn = document.getElementById('videoModeBtn');
+            const imageModeBtn = document.getElementById('imageModeBtn');
+            
+            if (mode === 'video') {
+                videoModeBtn.classList.add('active');
+                imageModeBtn.classList.remove('active');
+                videoSectionBox.style.display = 'block';
+                imageSectionBox.style.display = 'none';
+            } else {
+                imageModeBtn.classList.add('active');
+                videoModeBtn.classList.remove('active');
+                videoSectionBox.style.display = 'none';
+                imageSectionBox.style.display = 'block';
+            }
+            checkForm();
+        }
+        
+        imageInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                const file = e.target.files[0];
+                imageInfo.textContent = `✓ ${file.name} (${formatFileSize(file.size)})`;
+                imageBox.classList.add('has-file');
+            } else {
+                imageBox.classList.remove('has-file');
+            }
+            checkForm();
+        });
+        
         function formatFileSize(bytes) {
             const k = 1024;
             const sizes = ['Bytes', 'KB', 'MB', 'GB'];
@@ -339,7 +387,11 @@ HTML_TEMPLATE = '''
         }
         
         function checkForm() {
-            submitBtn.disabled = !(audioInput.files.length > 0 && videoInput.files.length > 0);
+            if (currentMode === 'video') {
+                submitBtn.disabled = !(audioInput.files.length > 0 && videoInput.files.length > 0);
+            } else {
+                submitBtn.disabled = !(audioInput.files.length > 0 && imageInput.files.length > 0);
+            }
         }
         
         audioInput.addEventListener('change', (e) => {
