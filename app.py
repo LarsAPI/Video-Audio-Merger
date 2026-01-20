@@ -23,16 +23,39 @@ OUTPUT_FOLDER = '/tmp/output'
 MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
 CLEANUP_AGE_HOURS = 24
 
-# Video effects mapping
+# Video effects mapping with categories
 VIDEO_EFFECTS = {
+    # No effect
     'none': None,
+    
+    # STATISCHE EFFEKTE (kein Bewegung)
     'staub': 'noise=alls=20:allf=t+u',
     'vignette': 'vignette=PI/5',
-    'psychedelic': 'hue=s=1.2:h=10*sin(t*0.1)',
-    'zoom': 'zoompan=z=\'zoom+0.001\':d=250',
-    'glitch': 'gblur=sigma=2:steps=1',
     'noir': 'eq=brightness=-0.1:contrast=1.2',
-    'warm': 'colorbalance=rs=0.1:gs=-0.05:bs=-0.1'
+    'warm': 'colorbalance=rs=0.1:gs=-0.05:bs=-0.1',
+    
+    # BEWEGTE/ANIMIERTE EFFEKTE
+    'psychedelic': 'hue=s=1.2:h=360*t',
+    'zoom': 'zoompan=z=\'min(zoom+0.001,1.5)\':d=250:x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2)',
+    'zoom_out': 'zoompan=z=\'if(lte(zoom,1.0),1.5,max(1.001,zoom-0.001))\':d=1',
+    'breathing': 'zoompan=z=\'1+0.1*sin(2*PI*t/3)\':d=1:x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2)',
+    'rainbow': 'hue=h=360*t:s=1.5',
+    'color_wave': 'hue=h=sin(2*PI*t/10)*180+180:s=1.2',
+    'shake': 'crop=in_w-abs(20*sin(t*10)):in_h-abs(20*sin(t*10))',
+    'earthquake': 'crop=in_w-abs(50*sin(t*15)):in_h-abs(50*cos(t*15))',
+    'rgb_glitch': 'rgbashift=rh=10*sin(t):gh=-10*sin(t):bh=10*cos(t)',
+    'vhs_glitch': 'rgbashift=rh=-6:gh=6,noise=alls=5:allf=t',
+    'trails': 'tmix=frames=5:weights=1 1 1 1 1',
+    'pulse_brightness': 'eq=brightness=0.2*sin(2*PI*t/5)',
+    'rotate': 'rotate=angle=2*PI*t/20:c=black',
+    'ken_burns': 'zoompan=z=\'min(max(zoom,pzoom)+0.0015,1.5)\':d=1:x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2)',
+    'stop_motion': 'fps=6',
+    
+    # KOMBINIERTE EFFEKTE
+    'horror_glitch': 'noise=alls=20:allf=t+u,rgbashift=rh=5*sin(t*10),eq=brightness=-0.2',
+    'desert_heat': 'hue=s=0.8,format=yuv420p,geq=lum=\'lum(X,Y+2*sin(X/20*2*PI))\'',
+    'psychedelic_staub': 'hue=h=360*t:s=1.3,noise=alls=15:allf=t+u',
+    'western_dust': 'colorbalance=rs=0.2:bs=-0.15,noise=alls=25:allf=t+u,vignette=PI/4',
 }
 
 # Create folders
@@ -299,13 +322,38 @@ HTML_TEMPLATE = '''
                 </label>
                 <select id="effectSelect" style="width: 100%; padding: 12px; border: 2px solid #667eea; border-radius: 8px; font-size: 1em; background: white; cursor: pointer;">
                     <option value="none">Kein Effekt</option>
-                    <option value="staub">🌫️ Staub / Film Grain</option>
-                    <option value="vignette">🎬 Vignette (Dunkle Ränder)</option>
-                    <option value="psychedelic">🌈 Psychedelisch</option>
-                    <option value="zoom">🔍 Langsamer Zoom</option>
-                    <option value="glitch">⚡ Glitch / Blur</option>
-                    <option value="noir">🖤 Noir / Film</option>
-                    <option value="warm">🔥 Warm / Vintage</option>
+                    
+                    <optgroup label="━━━ STATISCHE EFFEKTE ━━━">
+                        <option value="staub">🌫️ Staub / Film Grain</option>
+                        <option value="vignette">🎬 Vignette (Dunkle Ränder)</option>
+                        <option value="noir">🖤 Noir / Film</option>
+                        <option value="warm">🔥 Warm / Vintage</option>
+                    </optgroup>
+                    
+                    <optgroup label="━━━ BEWEGTE EFFEKTE ━━━">
+                        <option value="psychedelic">🌈 Psychedelisch (Farb-Rotation)</option>
+                        <option value="zoom">🔍 Zoom-In</option>
+                        <option value="zoom_out">🔍 Zoom-Out</option>
+                        <option value="breathing">💨 Atmungs-Effekt</option>
+                        <option value="rainbow">🌅 Regenbogen-Welle</option>
+                        <option value="color_wave">🌊 Farb-Welle</option>
+                        <option value="shake">📺 Wackeln</option>
+                        <option value="earthquake">⚠️ Erdbeben</option>
+                        <option value="rgb_glitch">📻 RGB Glitch</option>
+                        <option value="vhs_glitch">📼 VHS Glitch</option>
+                        <option value="trails">✨ Bewegungs-Trails</option>
+                        <option value="pulse_brightness">💡 Puls-Helligk.</option>
+                        <option value="rotate">🔄 Rotation</option>
+                        <option value="ken_burns">🎞️ Ken Burns (3D Pan)</option>
+                        <option value="stop_motion">🎬 Stop Motion</option>
+                    </optgroup>
+                    
+                    <optgroup label="━━━ KOMBINIERTE EFFEKTE ━━━">
+                        <option value="horror_glitch">👻 Horror Glitch</option>
+                        <option value="desert_heat">🏜️ Wüsten-Hitze</option>
+                        <option value="psychedelic_staub">🌈 Psycho-Staub</option>
+                        <option value="western_dust">🤠 Western Dust</option>
+                    </optgroup>
                 </select>
                 <div style="margin-top: 8px; font-size: 0.85em; color: #666;">
                     Der Effekt wird über das gesamte Video gelegt
@@ -779,6 +827,8 @@ def merge_video_audio_from_image(audio_path, image_path, output_path, status_pat
             except:
                 pass
         raise
+
+def merge_video_audio(audio_path, video_paths, output_path, status_path=None, effect='none'):
     """Merge video and audio - with random video mixing and optional effects"""
     import random
     
