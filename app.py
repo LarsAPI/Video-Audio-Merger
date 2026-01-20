@@ -700,7 +700,7 @@ def merge_video_audio_from_image(audio_path, image_path, output_path, status_pat
             cmd_image_to_video,
             capture_output=True,
             text=True,
-            timeout=3600
+            timeout=7200
         )
         
         encoding_time = time.time() - start_time
