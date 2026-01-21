@@ -25,37 +25,77 @@ CLEANUP_AGE_HOURS = 24
 
 # Video effects mapping with categories
 VIDEO_EFFECTS = {
-    # No effect
-    'none': None,
+    # No Effect
+    'none': {'filter': None, 'category': 'none'},
     
-    # STATISCHE EFFEKTE (kein Bewegung)
-    'staub': 'noise=alls=20:allf=t+u',
-    'vignette': 'vignette=PI/5',
-    'noir': 'eq=brightness=-0.1:contrast=1.2',
-    'warm': 'colorbalance=rs=0.1:gs=-0.05:bs=-0.1',
+    # STATISCHE EFFEKTE
+    'vignette': {'filter': 'vignette=PI/5', 'category': 'static'},
+    'noir': {'filter': 'eq=brightness=-0.1:contrast=1.2', 'category': 'static'},
+    'warm': {'filter': 'colorbalance=rs=0.1:gs=-0.05:bs=-0.1', 'category': 'static'},
+    'staub': {'filter': 'noise=alls=20:allf=t+u', 'category': 'static'},
+    'blur': {'filter': 'gblur=sigma=2:steps=1', 'category': 'static'},
     
-    # BEWEGTE/ANIMIERTE EFFEKTE
-    'psychedelic': 'hue=s=1.2:h=360*t',
-    'zoom': 'zoompan=z=\'min(zoom+0.001,1.5)\':d=250:x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2)',
-    'zoom_out': 'zoompan=z=\'if(lte(zoom,1.0),1.5,max(1.001,zoom-0.001))\':d=1',
-    'breathing': 'zoompan=z=\'1+0.1*sin(2*PI*t/3)\':d=1:x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2)',
-    'rainbow': 'hue=h=360*t:s=1.5',
-    'color_wave': 'hue=h=sin(2*PI*t/10)*180+180:s=1.2',
-    'shake': 'crop=in_w-abs(20*sin(t*10)):in_h-abs(20*sin(t*10))',
-    'earthquake': 'crop=in_w-abs(50*sin(t*15)):in_h-abs(50*cos(t*15))',
-    'rgb_glitch': 'rgbashift=rh=10*sin(t):gh=-10*sin(t):bh=10*cos(t)',
-    'vhs_glitch': 'rgbashift=rh=-6:gh=6,noise=alls=5:allf=t',
-    'trails': 'tmix=frames=5:weights=1 1 1 1 1',
-    'pulse_brightness': 'eq=brightness=0.2*sin(2*PI*t/5)',
-    'rotate': 'rotate=angle=2*PI*t/20:c=black',
-    'ken_burns': 'zoompan=z=\'min(max(zoom,pzoom)+0.0015,1.5)\':d=1:x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2)',
-    'stop_motion': 'fps=6',
+    # BEWEGTE EFFEKTE - Zoom & Pan
+    'zoom_in': {'filter': 'zoompan=z=\'min(zoom+0.005,1.5)\':d=250:x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2)', 'category': 'animated'},
+    'zoom_out': {'filter': 'zoompan=z=\'if(lte(zoom,1.0),1.5,max(1.001,zoom-0.005))\':d=1', 'category': 'animated'},
+    'breathing': {'filter': 'zoompan=z=\'1+0.15*sin(2*PI*t)\':d=1:x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2)', 'category': 'animated'},
+    'breathing_slow': {'filter': 'zoompan=z=\'1+0.1*sin(2*PI*t/3)\':d=1:x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2)', 'category': 'animated'},
+    'ken_burns': {'filter': 'zoompan=z=\'min(max(zoom,pzoom)+0.0015,1.5)\':d=1:x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2)', 'category': 'animated'},
+    'pan_right': {'filter': 'zoompan=z=1:x=\'x+5\':y=y:d=1', 'category': 'animated'},
+    
+    # BEWEGTE EFFEKTE - Rotation
+    'rotate': {'filter': 'rotate=angle=2*PI*t/10:c=black', 'category': 'animated'},
+    'rotate_slow': {'filter': 'rotate=angle=PI*t/20:c=black', 'category': 'animated'},
+    'rotate_fast': {'filter': 'rotate=angle=4*PI*t:c=black', 'category': 'animated'},
+    
+    # BEWEGTE EFFEKTE - Farben
+    'psychedelic': {'filter': 'hue=s=1.3:h=360*t*3', 'category': 'animated'},
+    'psychedelic_slow': {'filter': 'hue=s=1.2:h=360*t', 'category': 'animated'},
+    'rainbow': {'filter': 'hue=h=360*t*5:s=1.5', 'category': 'animated'},
+    'color_wave': {'filter': 'hue=h=sin(2*PI*t*2)*180+180:s=1.3', 'category': 'animated'},
+    'saturation_pulse': {'filter': 'hue=s=1+0.7*sin(2*PI*t*3)', 'category': 'animated'},
+    'brightness_pulse': {'filter': 'eq=brightness=0.3*sin(2*PI*t*2)', 'category': 'animated'},
+    
+    # BEWEGTE EFFEKTE - Shake & Distortion
+    'shake': {'filter': 'crop=in_w-abs(20*sin(t*20)):in_h-abs(20*sin(t*20))', 'category': 'animated'},
+    'shake_soft': {'filter': 'crop=in_w-abs(10*sin(t*10)):in_h-abs(10*sin(t*10))', 'category': 'animated'},
+    'earthquake': {'filter': 'crop=in_w-abs(50*sin(t*25)):in_h-abs(50*cos(t*25))', 'category': 'animated'},
+    'vibrate': {'filter': 'crop=iw-abs(15*sin(t*100)):ih:abs(8*sin(t*100)):0', 'category': 'animated'},
+    'wave_distort': {'filter': 'format=yuv420p,geq=lum=\'lum(X,Y+15*sin(X/10*2*PI+t*5))\'', 'category': 'animated'},
+    'wave_horizontal': {'filter': 'format=yuv420p,geq=lum=\'lum(X+15*sin(Y/10*2*PI+t*5),Y)\'', 'category': 'animated'},
+    'ripple': {'filter': 'format=yuv420p,geq=lum=\'lum(X+10*sin(hypot(X-W/2,Y-H/2)/20-t*3),Y+10*cos(hypot(X-W/2,Y-H/2)/20-t*3))\'', 'category': 'animated'},
+    
+    # BEWEGTE EFFEKTE - Glitch
+    'rgb_glitch': {'filter': 'rgbashift=rh=15*sin(t*5):gh=-15*sin(t*5):bh=15*cos(t*5)', 'category': 'animated'},
+    'rgb_glitch_fast': {'filter': 'rgbashift=rh=20*sin(t*10):gh=-20*sin(t*10):bh=20*cos(t*10)', 'category': 'animated'},
+    'vhs_glitch': {'filter': 'rgbashift=rh=-8:gh=8,noise=alls=8+3*sin(t*2):allf=t', 'category': 'animated'},
+    'datamosh': {'filter': 'noise=alls=15+10*sin(t*5):allf=t', 'category': 'animated'},
+    'glitch_scan': {'filter': 'rgbashift=rh=30*sin(t*20):bv=30*sin(t*20)', 'category': 'animated'},
+    
+    # BEWEGTE EFFEKTE - Trails & Special
+    'trails': {'filter': 'tmix=frames=5:weights=1 1 1 1 1', 'category': 'animated'},
+    'trails_long': {'filter': 'tmix=frames=10:weights=1 1 1 1 1 1 1 1 1 1', 'category': 'animated'},
+    'ghosting': {'filter': 'tmix=frames=3:weights=1 2 1', 'category': 'animated'},
+    'stop_motion': {'filter': 'fps=8', 'category': 'animated'},
+    'crt_flicker': {'filter': 'eq=brightness=0.1*sin(200*t):contrast=1+0.2*sin(100*t)', 'category': 'animated'},
+    
+    # NEUE: Partikel & Bewegte Overlays
+    'dust_storm': {'filter': 'noise=alls=40+20*sin(t*3):allf=t+u,hue=s=0.3', 'category': 'animated'},
+    'snow': {'filter': 'noise=alls=60+30*sin(t*10):allf=t+u,eq=contrast=1.2:brightness=0.1', 'category': 'animated'},
+    'rain': {'filter': 'noise=alls=50:allf=t+u,format=yuv420p,geq=lum=\'lum(X,Y+30*sin(t*10))\'', 'category': 'animated'},
+    'film_scratches': {'filter': 'noise=alls=80+40*sin(t*20):allf=t+u,hue=s=0', 'category': 'animated'},
     
     # KOMBINIERTE EFFEKTE
-    'horror_glitch': 'noise=alls=20:allf=t+u,rgbashift=rh=5*sin(t*10),eq=brightness=-0.2',
-    'desert_heat': 'hue=s=0.8,format=yuv420p,geq=lum=\'lum(X,Y+2*sin(X/20*2*PI))\'',
-    'psychedelic_staub': 'hue=h=360*t:s=1.3,noise=alls=15:allf=t+u',
-    'western_dust': 'colorbalance=rs=0.2:bs=-0.15,noise=alls=25:allf=t+u,vignette=PI/4',
+    'horror_glitch': {'filter': 'noise=alls=30+10*sin(t*5):allf=t+u,rgbashift=rh=10*sin(t*10),eq=brightness=-0.2', 'category': 'combined'},
+    'desert_heat': {'filter': 'hue=s=0.8,format=yuv420p,geq=lum=\'lum(X,Y+5*sin(X/10*2*PI+t*3))\'', 'category': 'combined'},
+    'psychedelic_staub': {'filter': 'hue=h=360*t*3:s=1.4,noise=alls=25+10*sin(t*2):allf=t+u', 'category': 'combined'},
+    'western_dust': {'filter': 'colorbalance=rs=0.2:bs=-0.15,noise=alls=35+15*sin(t*2):allf=t+u,vignette=PI/4', 'category': 'combined'},
+    'noir_grain': {'filter': 'eq=brightness=-0.1:contrast=1.3,noise=alls=40+15*sin(t*3):allf=t+u', 'category': 'combined'},
+    'vintage_breathing': {'filter': 'colorbalance=rs=0.15:bs=-0.1,zoompan=z=\'1+0.12*sin(2*PI*t*2)\':d=1,noise=alls=25:allf=t+u', 'category': 'combined'},
+    'trippy_trails': {'filter': 'hue=h=360*t*4:s=1.5,tmix=frames=8:weights=1 1 1 1 1 1 1 1', 'category': 'combined'},
+    'storm_chaos': {'filter': 'noise=alls=50+30*sin(t*8):allf=t+u,rgbashift=rh=20*sin(t*10):gh=-20*sin(t*10),crop=in_w-abs(30*sin(t*15)):in_h-abs(30*sin(t*15))', 'category': 'combined'},
+    'acid_trip': {'filter': 'hue=h=360*t*5:s=1.6,format=yuv420p,geq=lum=\'lum(X+10*sin(Y/10*2*PI+t*8),Y+10*cos(X/10*2*PI+t*8))\'', 'category': 'combined'},
+    'nightmare_vision': {'filter': 'eq=brightness=-0.3:contrast=1.5,hue=h=180+90*sin(t*2):s=0.5,noise=alls=35+20*sin(t*10):allf=t+u,tmix=frames=4:weights=1 1 1 1', 'category': 'combined'},
 }
 
 # Create folders
@@ -324,28 +364,68 @@ HTML_TEMPLATE = '''
                     <option value="none">Kein Effekt</option>
                     
                     <optgroup label="━━━ STATISCHE EFFEKTE ━━━">
+                        <option value="blur">🌫️ Blur</option>
                         <option value="staub">🌫️ Staub / Film Grain</option>
                         <option value="vignette">🎬 Vignette (Dunkle Ränder)</option>
                         <option value="noir">🖤 Noir / Film</option>
                         <option value="warm">🔥 Warm / Vintage</option>
                     </optgroup>
                     
-                    <optgroup label="━━━ BEWEGTE EFFEKTE ━━━">
-                        <option value="psychedelic">🌈 Psychedelisch (Farb-Rotation)</option>
-                        <option value="zoom">🔍 Zoom-In</option>
+                    <optgroup label="━━━ ZOOM & PAN ━━━">
+                        <option value="zoom_in">🔍 Zoom-In</option>
                         <option value="zoom_out">🔍 Zoom-Out</option>
                         <option value="breathing">💨 Atmungs-Effekt</option>
+                        <option value="breathing_slow">💨 Atmung (Langsam)</option>
+                        <option value="ken_burns">🎞️ Ken Burns (3D Pan)</option>
+                        <option value="pan_right">➡️ Pan Rechts</option>
+                    </optgroup>
+                    
+                    <optgroup label="━━━ ROTATION ━━━">
+                        <option value="rotate">🔄 Rotation</option>
+                        <option value="rotate_slow">🔄 Rotation (Langsam)</option>
+                        <option value="rotate_fast">🔄 Rotation (Schnell)</option>
+                    </optgroup>
+                    
+                    <optgroup label="━━━ FARB-EFFEKTE ━━━">
+                        <option value="psychedelic">🌈 Psychedelisch (Schnell)</option>
+                        <option value="psychedelic_slow">🌈 Psychedelisch (Langsam)</option>
                         <option value="rainbow">🌅 Regenbogen-Welle</option>
                         <option value="color_wave">🌊 Farb-Welle</option>
+                        <option value="saturation_pulse">📊 Sättigung-Puls</option>
+                        <option value="brightness_pulse">💡 Helligkeits-Puls</option>
+                    </optgroup>
+                    
+                    <optgroup label="━━━ SHAKE & DISTORTION ━━━">
                         <option value="shake">📺 Wackeln</option>
+                        <option value="shake_soft">📺 Wackeln (Sanft)</option>
                         <option value="earthquake">⚠️ Erdbeben</option>
+                        <option value="vibrate">〰️ Vibration</option>
+                        <option value="wave_distort">〰️ Wellen (Vertikal)</option>
+                        <option value="wave_horizontal">〰️ Wellen (Horizontal)</option>
+                        <option value="ripple">〰️ Ripple-Effekt</option>
+                    </optgroup>
+                    
+                    <optgroup label="━━━ GLITCH EFFEKTE ━━━">
                         <option value="rgb_glitch">📻 RGB Glitch</option>
+                        <option value="rgb_glitch_fast">📻 RGB Glitch (Schnell)</option>
                         <option value="vhs_glitch">📼 VHS Glitch</option>
+                        <option value="datamosh">🤖 Datamosh</option>
+                        <option value="glitch_scan">📺 Glitch Scan</option>
+                    </optgroup>
+                    
+                    <optgroup label="━━━ TRAILS & SPEZIAL ━━━">
                         <option value="trails">✨ Bewegungs-Trails</option>
-                        <option value="pulse_brightness">💡 Puls-Helligk.</option>
-                        <option value="rotate">🔄 Rotation</option>
-                        <option value="ken_burns">🎞️ Ken Burns (3D Pan)</option>
+                        <option value="trails_long">✨ Trails (Lang)</option>
+                        <option value="ghosting">👻 Ghosting</option>
                         <option value="stop_motion">🎬 Stop Motion</option>
+                        <option value="crt_flicker">📺 CRT Flicker</option>
+                    </optgroup>
+                    
+                    <optgroup label="━━━ PARTIKEL & OVERLAYS ━━━">
+                        <option value="dust_storm">🌪️ Staub-Sturm</option>
+                        <option value="snow">❄️ Schnee</option>
+                        <option value="rain">🌧️ Regen</option>
+                        <option value="film_scratches">🎞️ Film-Kratzer</option>
                     </optgroup>
                     
                     <optgroup label="━━━ KOMBINIERTE EFFEKTE ━━━">
@@ -353,6 +433,12 @@ HTML_TEMPLATE = '''
                         <option value="desert_heat">🏜️ Wüsten-Hitze</option>
                         <option value="psychedelic_staub">🌈 Psycho-Staub</option>
                         <option value="western_dust">🤠 Western Dust</option>
+                        <option value="noir_grain">🖤 Noir mit Grain</option>
+                        <option value="vintage_breathing">🔄 Vintage Breathing</option>
+                        <option value="trippy_trails">🌈 Trippy Trails</option>
+                        <option value="storm_chaos">⚡ Sturm Chaos</option>
+                        <option value="acid_trip">🎨 Acid Trip</option>
+                        <option value="nightmare_vision">😱 Nightmare Vision</option>
                     </optgroup>
                 </select>
                 <div style="margin-top: 8px; font-size: 0.85em; color: #666;">
@@ -716,10 +802,10 @@ def merge_video_audio_from_image(audio_path, image_path, output_path, status_pat
         ]
         
         # Add video filter if effect is selected
-        if effect != 'none' and effect in VIDEO_EFFECTS and VIDEO_EFFECTS[effect]:
-            print(f"Applying video filter: {VIDEO_EFFECTS[effect]}")
+        if effect != 'none' and effect in VIDEO_EFFECTS and VIDEO_EFFECTS[effect]['filter']:
+            print(f"Applying video filter: {VIDEO_EFFECTS[effect]['filter']}")
             cmd_image_to_video.extend([
-                '-vf', VIDEO_EFFECTS[effect]
+                '-vf', VIDEO_EFFECTS[effect]['filter']
             ])
         
         # Add encoding parameters
@@ -910,10 +996,10 @@ def merge_video_audio(audio_path, video_paths, output_path, status_path=None, ef
         ]
         
         # Add video filter if effect is selected
-        if effect != 'none' and effect in VIDEO_EFFECTS and VIDEO_EFFECTS[effect]:
-            print(f"Applying video filter: {VIDEO_EFFECTS[effect]}")
+        if effect != 'none' and effect in VIDEO_EFFECTS and VIDEO_EFFECTS[effect]['filter']:
+            print(f"Applying video filter: {VIDEO_EFFECTS[effect]['filter']}")
             cmd_concat.extend([
-                '-vf', VIDEO_EFFECTS[effect]
+                '-vf', VIDEO_EFFECTS[effect]['filter']
             ])
         
         # Add encoding parameters
