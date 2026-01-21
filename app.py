@@ -441,6 +441,9 @@ HTML_TEMPLATE = '''
                         <option value="nightmare_vision">😱 Nightmare Vision</option>
                     </optgroup>
                 </select>
+                <div id="effectDescription" style="margin-top: 12px; padding: 12px; background: #f0f1ff; border-left: 4px solid #667eea; border-radius: 6px; font-size: 0.95em; color: #333; min-height: 40px; display: flex; align-items: center;">
+                    Kein Effekt wird angewendet
+                </div>
                 <div style="margin-top: 8px; font-size: 0.85em; color: #666;">
                     Der Effekt wird über das gesamte Video gelegt
                 </div>
@@ -466,6 +469,62 @@ HTML_TEMPLATE = '''
     </div>
 
     <script>
+        // Effect descriptions
+        const effectDescriptions = {
+            'none': 'Kein Effekt wird angewendet',
+            'vignette': '🎨 Statisch - Dunkle Ränder für cinematischen Look',
+            'noir': '🎨 Statisch - Klassischer Film-Noir Look',
+            'warm': '🎨 Statisch - Warme Vintage-Farben',
+            'staub': '🎨 Statisch - Film-Körnung und Staub',
+            'blur': '🎨 Statisch - Weichzeichner-Effekt',
+            'zoom_in': '🎭 Animiert - Schneller Zoom ins Bild (5x schneller)',
+            'zoom_out': '🎭 Animiert - Schneller Zoom aus dem Bild (5x schneller)',
+            'breathing': '🎭 Animiert - Schnell pulsierender Zoom (1 Zyklus/Sekunde)',
+            'breathing_slow': '🎭 Animiert - Langsam pulsierender Zoom (alle 3 Sekunden)',
+            'ken_burns': '🎭 Animiert - Klassischer Dokumentarfilm-Effekt',
+            'pan_right': '🎭 Animiert - Schnelle Kamera-Bewegung nach rechts',
+            'rotate': '🎭 Animiert - Kontinuierliche Rotation (1 Umdrehung/10 Sek)',
+            'rotate_slow': '🎭 Animiert - Langsame Rotation (1 Umdrehung/20 Sek)',
+            'rotate_fast': '🎭 Animiert - Schnelle Rotation (2 Umdrehungen/Sekunde)',
+            'psychedelic': '🎭 Animiert - Schnelle Farbveränderungen (3x Geschwindigkeit)',
+            'psychedelic_slow': '🎭 Animiert - Normale Psychedelic-Geschwindigkeit',
+            'rainbow': '🎭 Animiert - Sehr schneller Regenbogen-Cycle (5x)',
+            'color_wave': '🎭 Animiert - Schnelle wellenförmige Farbänderungen',
+            'saturation_pulse': '🎭 Animiert - Schnell pulsierende Farbsättigung',
+            'brightness_pulse': '🎭 Animiert - Schnell pulsierende Helligkeit',
+            'shake': '🎭 Animiert - Schnelles Kamera-Wackeln (2x schneller)',
+            'shake_soft': '🎭 Animiert - Sanftes Kamera-Wackeln',
+            'earthquake': '🎭 Animiert - Sehr starkes Erdbeben-Wackeln',
+            'vibrate': '🎭 Animiert - Extrem schnelles Vibrieren (100 Hz)',
+            'wave_distort': '🎭 Animiert - Bewegte vertikale Wellen',
+            'wave_horizontal': '🎭 Animiert - Bewegte horizontale Wellen',
+            'ripple': '🎭 Animiert - Wasser-Ripple vom Zentrum',
+            'rgb_glitch': '🎭 Animiert - Bewegte RGB-Kanal Verschiebung',
+            'rgb_glitch_fast': '🎭 Animiert - Schnelle RGB-Kanal Verschiebung (2x)',
+            'vhs_glitch': '🎭 Animiert - Bewegter VHS-Tape Effekt',
+            'datamosh': '🎭 Animiert - Pulsierender Datamoshing Glitch',
+            'glitch_scan': '🎭 Animiert - Schnelle Scan-Line Glitches',
+            'trails': '🎭 Animiert - Motion Blur Trails (5 Frames)',
+            'trails_long': '🎭 Animiert - Lange Motion Blur Trails (10 Frames)',
+            'ghosting': '🎭 Animiert - Kurzer Geister-Effekt',
+            'stop_motion': '🎭 Animiert - Stop-Motion Look (8 FPS)',
+            'crt_flicker': '🎭 Animiert - Schnelles CRT-Monitor Flackern',
+            'dust_storm': '🎭 Animiert - Bewegter Staubsturm (weht durch)',
+            'snow': '🎭 Animiert - Fallender Schnee',
+            'rain': '🎭 Animiert - Bewegter Regen',
+            'film_scratches': '🎭 Animiert - Schnell bewegte Film-Kratzer',
+            'horror_glitch': '🎨 Kombiniert - Bewegter Staub + Pulsierender Glitch + Dunkel',
+            'desert_heat': '🎨 Kombiniert - Hitzeflimmern mit bewegten Wellen',
+            'psychedelic_staub': '🎨 Kombiniert - Schnelle Farben + Bewegte Filmkörnung',
+            'western_dust': '🎨 Kombiniert - Western-Farben + Bewegter Staub',
+            'noir_grain': '🎨 Kombiniert - Film-Noir + Bewegte Körnung',
+            'vintage_breathing': '🎨 Kombiniert - Vintage + Schneller Atmender Zoom + Staub',
+            'trippy_trails': '🎨 Kombiniert - Sehr schnelle Psychedelic + Lange Trails',
+            'storm_chaos': '🎨 Kombiniert - Extremer Staub + RGB-Glitch + Shake',
+            'acid_trip': '🎨 Kombiniert - Extreme Farben + Spiralverzerrung',
+            'nightmare_vision': '🎨 Kombiniert - Dunkel + Pulsierender Horror + Trails'
+        };
+
         const audioInput = document.getElementById('audioInput');
         const videoInput = document.getElementById('videoInput');
         const audioBox = document.getElementById('audioBox');
@@ -551,6 +610,15 @@ HTML_TEMPLATE = '''
                 videoBox.classList.add('has-file');
             }
             checkForm();
+        });
+
+        // Update effect description when selection changes
+        const effectSelect = document.getElementById('effectSelect');
+        const effectDescription = document.getElementById('effectDescription');
+        
+        effectSelect.addEventListener('change', (e) => {
+            const selectedEffect = e.target.value;
+            effectDescription.textContent = effectDescriptions[selectedEffect] || 'Unbekannter Effekt';
         });
         
         async function handleUpload() {
