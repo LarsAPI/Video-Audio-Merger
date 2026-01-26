@@ -68,8 +68,8 @@ VIDEO_EFFECTS = {
     # BEWEGTE EFFEKTE - Glitch
     'rgb_glitch': {'filter': 'rgbashift=rh=15*sin(t*5):gh=-15*sin(t*5):bh=15*cos(t*5)', 'category': 'animated'},
     'rgb_glitch_fast': {'filter': 'rgbashift=rh=20*sin(t*10):gh=-20*sin(t*10):bh=20*cos(t*10)', 'category': 'animated'},
-    'vhs_glitch': {'filter': 'rgbashift=rh=-8:gh=8,noise=alls=8+3*sin(t*2):allf=t', 'category': 'animated'},
-    'datamosh': {'filter': 'noise=alls=15+10*sin(t*5):allf=t', 'category': 'animated'},
+    'vhs_glitch': {'filter': 'rgbashift=rh=-8:gh=8,noise=alls=8:allf=t,eq=brightness=0.05*sin(t*2)', 'category': 'animated'},
+    'datamosh': {'filter': 'noise=alls=20:allf=t,eq=contrast=1+0.3*sin(t*5)', 'category': 'animated'},
     'glitch_scan': {'filter': 'rgbashift=rh=30*sin(t*20):bv=30*sin(t*20)', 'category': 'animated'},
     
     # BEWEGTE EFFEKTE - Trails & Special
@@ -80,22 +80,22 @@ VIDEO_EFFECTS = {
     'crt_flicker': {'filter': 'eq=brightness=0.1*sin(200*t):contrast=1+0.2*sin(100*t)', 'category': 'animated'},
     
     # NEUE: Partikel & Bewegte Overlays
-    'dust_storm': {'filter': 'noise=alls=40+20*sin(t*3):allf=t+u,hue=s=0.3', 'category': 'animated'},
-    'snow': {'filter': 'noise=alls=60+30*sin(t*10):allf=t+u,eq=contrast=1.2:brightness=0.1', 'category': 'animated'},
-    'rain': {'filter': 'noise=alls=50:allf=t+u,format=yuv420p,geq=lum=\'lum(X,Y+30*sin(t*10))\'', 'category': 'animated'},
-    'film_scratches': {'filter': 'noise=alls=80+40*sin(t*20):allf=t+u,hue=s=0', 'category': 'animated'},
+    'dust_storm': {'filter': 'noise=alls=40:allf=t+u,hue=s=0.3+0.2*sin(t*3)', 'category': 'animated'},
+    'snow': {'filter': 'noise=alls=60:allf=t+u,eq=contrast=1.2:brightness=0.1+0.05*sin(t*5)', 'category': 'animated'},
+    'rain': {'filter': 'noise=alls=50:allf=t+u,format=yuv420p,geq=lum=\'lum(X,Y+30*sin(X/20+t*10))\'', 'category': 'animated'},
+    'film_scratches': {'filter': 'noise=alls=80:allf=t+u,hue=s=0,eq=brightness=0.1*sin(t*20)', 'category': 'animated'},
     
     # KOMBINIERTE EFFEKTE
-    'horror_glitch': {'filter': 'noise=alls=30+10*sin(t*5):allf=t+u,rgbashift=rh=10*sin(t*10),eq=brightness=-0.2', 'category': 'combined'},
+    'horror_glitch': {'filter': 'noise=alls=30:allf=t+u,rgbashift=rh=10*sin(t*10),eq=brightness=-0.2+0.1*sin(t*5)', 'category': 'combined'},
     'desert_heat': {'filter': 'hue=s=0.8,format=yuv420p,geq=lum=\'lum(X,Y+5*sin(X/10*2*PI+t*3))\'', 'category': 'combined'},
-    'psychedelic_staub': {'filter': 'hue=h=360*t*3:s=1.4,noise=alls=25+10*sin(t*2):allf=t+u', 'category': 'combined'},
-    'western_dust': {'filter': 'colorbalance=rs=0.2:bs=-0.15,noise=alls=35+15*sin(t*2):allf=t+u,vignette=PI/4', 'category': 'combined'},
-    'noir_grain': {'filter': 'eq=brightness=-0.1:contrast=1.3,noise=alls=40+15*sin(t*3):allf=t+u', 'category': 'combined'},
+    'psychedelic_staub': {'filter': 'hue=h=360*t*3:s=1.4,noise=alls=25:allf=t+u', 'category': 'combined'},
+    'western_dust': {'filter': 'colorbalance=rs=0.2:bs=-0.15,noise=alls=35:allf=t+u,vignette=PI/4,hue=s=1+0.3*sin(t*2)', 'category': 'combined'},
+    'noir_grain': {'filter': 'eq=brightness=-0.1:contrast=1.3,noise=alls=40:allf=t+u', 'category': 'combined'},
     'vintage_breathing': {'filter': 'colorbalance=rs=0.15:bs=-0.1,zoompan=z=\'1+0.12*sin(2*PI*t*2)\':d=1,noise=alls=25:allf=t+u', 'category': 'combined'},
     'trippy_trails': {'filter': 'hue=h=360*t*4:s=1.5,tmix=frames=8:weights=1 1 1 1 1 1 1 1', 'category': 'combined'},
-    'storm_chaos': {'filter': 'noise=alls=50+30*sin(t*8):allf=t+u,rgbashift=rh=20*sin(t*10):gh=-20*sin(t*10),crop=in_w-abs(30*sin(t*15)):in_h-abs(30*sin(t*15))', 'category': 'combined'},
+    'storm_chaos': {'filter': 'noise=alls=50:allf=t+u,rgbashift=rh=20*sin(t*10):gh=-20*sin(t*10),crop=in_w-abs(30*sin(t*15)):in_h-abs(30*sin(t*15)),eq=brightness=0.1*sin(t*8)', 'category': 'combined'},
     'acid_trip': {'filter': 'hue=h=360*t*5:s=1.6,format=yuv420p,geq=lum=\'lum(X+10*sin(Y/10*2*PI+t*8),Y+10*cos(X/10*2*PI+t*8))\'', 'category': 'combined'},
-    'nightmare_vision': {'filter': 'eq=brightness=-0.3:contrast=1.5,hue=h=180+90*sin(t*2):s=0.5,noise=alls=35+20*sin(t*10):allf=t+u,tmix=frames=4:weights=1 1 1 1', 'category': 'combined'},
+    'nightmare_vision': {'filter': 'eq=brightness=-0.3:contrast=1.5,hue=h=180+90*sin(t*2):s=0.5,noise=alls=35:allf=t+u,tmix=frames=4:weights=1 1 1 1', 'category': 'combined'},
 }
 
 # Create folders
