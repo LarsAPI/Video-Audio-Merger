@@ -10,10 +10,13 @@ import subprocess
 import uuid
 import json
 import random
+import re
 from datetime import datetime, timedelta
 import threading
 import time
 from pathlib import Path
+import zipfile
+from io import BytesIO
 
 app = Flask(__name__)
 
@@ -758,6 +761,31 @@ HTML_TEMPLATE = '''
                                 ? `<br><span style="color: #764ba2;">✨ Mit ${statusData.effect} Effekt</span>`
                                 : '';
                             
+                            let downloadOptions = '';
+                            if (statusData.has_tracklist) {
+                                downloadOptions = `
+                                    <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                        <a href="/download/${statusData.file_id}" class="download-btn" download>
+                                            📦 ZIP (Video + Tracklist)
+                                        </a>
+                                        <a href="/download-video/${statusData.file_id}" class="download-btn" download style="background: #17a2b8;">
+                                            🎬 Nur Video
+                                        </a>
+                                    </div>
+                                    <div style="margin-top: 10px;">
+                                        <a href="/download-tracklist/${statusData.file_id}" class="download-btn" download style="width: 100%; background: #6c757d;">
+                                            📝 Nur Trackliste
+                                        </a>
+                                    </div>
+                                `;
+                            } else {
+                                downloadOptions = `
+                                    <a href="/download/${statusData.file_id}" class="download-btn" download>
+                                        ⬇️ Video herunterladen
+                                    </a>
+                                `;
+                            }
+                            
                             resultDiv.className = 'result success';
                             resultDiv.innerHTML = `
                                 <div style="text-align: center;">
@@ -767,9 +795,7 @@ HTML_TEMPLATE = '''
                                         Größe: ${statusData.size}<br>
                                         Dauer: ${statusData.duration}${modeBadge}${effectBadge}
                                     </div>
-                                    <a href="/download/${statusData.file_id}" class="download-btn" download>
-                                        ⬇️ Video herunterladen
-                                    </a>
+                                    ${downloadOptions}
                                 </div>
                             `;
                             submitBtn.disabled = false;
@@ -840,6 +866,96 @@ def format_size(bytes):
             return f"{bytes:.2f} {unit}"
         bytes /= 1024.0
     return f"{bytes:.2f} TB"
+
+def seconds_to_hhmmss(seconds):
+    """Konvertiert Sekunden zu HH:MM:SS Format"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+def create_tracklist(audio_path, file_id, noise_threshold=-30, silence_duration=2):
+    """
+    Erstellt eine Trackliste basierend auf erkannten Liedwechseln
+    Format: MM:SS - Song Name
+    
+    Args:
+        audio_path: Pfad zur Audio-Datei
+        file_id: Eindeutige ID für die Datei
+        noise_threshold: Dezibel-Schwelle für Stille
+        silence_duration: Mindestdauer der Stille
+    
+    Returns:
+        Pfad zur erstellten TXT-Datei
+    """
+    try:
+        print(f"[Tracklist] Creating tracklist for {file_id}")
+        
+        # FFmpeg Befehl zum Erkennen von Stille
+        cmd = [
+            'ffmpeg', '-i', audio_path,
+            '-af', f'silencedetect=noise={noise_threshold}dB:d={silence_duration}',
+            '-f', 'null', '-'
+        ]
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        # Parse silence detections
+        stderr_output = result.stderr
+        silence_starts = re.findall(r'silence_start: ([\d.]+)', stderr_output)
+        silence_ends = re.findall(r'silence_end: ([\d.]+)', stderr_output)
+        
+        # Get audio duration
+        audio_duration = get_video_duration(audio_path)
+        
+        # Create list of track start times
+        track_times = []
+        
+        # First track starts at 0
+        track_times.append(0.0)
+        
+        # Additional tracks start after each detected silence
+        for i in range(len(silence_ends)):
+            if i < len(silence_ends):
+                start_time = float(silence_ends[i])
+                # Only add if it's before the end of the audio
+                if start_time < audio_duration:
+                    track_times.append(start_time)
+        
+        # Remove duplicates and sort
+        track_times = sorted(list(set(track_times)))
+        
+        print(f"[Tracklist] Detected {len(track_times)} tracks")
+        
+        # Create tracklist content
+        tracklist_content = []
+        
+        for i, track_time in enumerate(track_times, 1):
+            time_str = seconds_to_hhmmss(track_time)
+            # Generic track name - users can edit manually
+            song_name = f"Track {i}"
+            tracklist_content.append(f"{time_str} - {song_name}")
+        
+        # Write to file
+        tracklist_path = os.path.join(OUTPUT_FOLDER, f"{file_id}_tracklist.txt")
+        with open(tracklist_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(tracklist_content))
+        
+        print(f"[Tracklist] Created: {tracklist_path}")
+        print(f"[Tracklist] Total tracks: {len(track_times)}")
+        return tracklist_path
+        
+    except Exception as e:
+        print(f"[Tracklist] Error creating tracklist: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return None
 
 def merge_video_audio_from_image(audio_path, image_path, output_path, status_path=None, effect='none'):
     """Create video from static image with audio and optional effects"""
@@ -1395,6 +1511,11 @@ def process_video_background(file_id, audio_path, video_paths, image_path, outpu
         file_size = os.path.getsize(output_path)
         duration = get_video_duration(output_path)
         
+        # Create tracklist from original audio
+        print("[Background] Creating tracklist...")
+        update_status(status_path, 'processing', 90, 'Erstelle Trackliste...')
+        tracklist_path = create_tracklist(audio_path, file_id)
+        
         # Clean up input files
         print("[Background] Cleaning up input files...")
         if os.path.exists(audio_path):
@@ -1415,7 +1536,8 @@ def process_video_background(file_id, audio_path, video_paths, image_path, outpu
             'duration': format_duration(duration),
             'file_size_bytes': file_size,
             'effect': effect,
-            'mode': mode
+            'mode': mode,
+            'has_tracklist': tracklist_path is not None
         }
         
         if mode == 'video':
@@ -1492,18 +1614,85 @@ def get_status(job_id):
 
 @app.route('/download/<file_id>')
 def download(file_id):
-    """Download merged video"""
+    """Download merged video and tracklist as ZIP"""
     try:
-        file_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.mp4")
+        video_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.mp4")
+        tracklist_path = os.path.join(OUTPUT_FOLDER, f"{file_id}_tracklist.txt")
         
-        if not os.path.exists(file_path):
+        if not os.path.exists(video_path):
+            return "Video not found or expired", 404
+        
+        # Check if tracklist exists
+        has_tracklist = os.path.exists(tracklist_path)
+        
+        # If both files exist, create a ZIP
+        if has_tracklist:
+            print(f"[Download] Creating ZIP for {file_id} with video and tracklist")
+            
+            # Create ZIP in memory
+            zip_buffer = BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                # Add video
+                zip_file.write(video_path, arcname=f"merged_video_{file_id}.mp4")
+                # Add tracklist
+                zip_file.write(tracklist_path, arcname=f"tracklist_{file_id}.txt")
+            
+            zip_buffer.seek(0)
+            
+            return send_file(
+                zip_buffer,
+                mimetype='application/zip',
+                as_attachment=True,
+                download_name=f'video_with_tracklist_{file_id}.zip'
+            )
+        else:
+            # Just video
+            print(f"[Download] Downloading video only for {file_id}")
+            
+            return send_file(
+                video_path,
+                mimetype='video/mp4',
+                as_attachment=True,
+                download_name=f'merged_video_{file_id}.mp4'
+            )
+            
+    except Exception as e:
+        print(f"Download error: {e}")
+        return "Error downloading file", 500
+
+@app.route('/download-video/<file_id>')
+def download_video(file_id):
+    """Download only the video file"""
+    try:
+        video_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.mp4")
+        
+        if not os.path.exists(video_path):
             return "File not found or expired", 404
         
         return send_file(
-            file_path,
+            video_path,
             mimetype='video/mp4',
             as_attachment=True,
             download_name=f'merged_video_{file_id}.mp4'
+        )
+    except Exception as e:
+        print(f"Download error: {e}")
+        return "Error downloading file", 500
+
+@app.route('/download-tracklist/<file_id>')
+def download_tracklist(file_id):
+    """Download only the tracklist file"""
+    try:
+        tracklist_path = os.path.join(OUTPUT_FOLDER, f"{file_id}_tracklist.txt")
+        
+        if not os.path.exists(tracklist_path):
+            return "Tracklist not found", 404
+        
+        return send_file(
+            tracklist_path,
+            mimetype='text/plain',
+            as_attachment=True,
+            download_name=f'tracklist_{file_id}.txt'
         )
     except Exception as e:
         print(f"Download error: {e}")
