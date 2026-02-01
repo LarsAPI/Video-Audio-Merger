@@ -875,7 +875,7 @@ def seconds_to_hhmmss(seconds):
     
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
-def create_tracklist(audio_path, file_id, noise_threshold=-30, silence_duration=2):
+def create_tracklist(audio_path, file_id, noise_threshold=-50, silence_duration=0.5):
     """
     Erstellt eine Trackliste basierend auf erkannten Liedwechseln
     Format: MM:SS - Song Name
