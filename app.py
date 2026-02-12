@@ -995,8 +995,8 @@ def merge_video_audio_from_image(audio_path, image_path, output_path, status_pat
         # Add encoding parameters
         cmd_image_to_video.extend([
             '-c:v', 'libx264',
-            '-preset', 'fast',
-            '-crf', '28',
+            '-preset', 'medium',
+            '-crf', '23',
             '-profile:v', 'high',
             '-level', '4.2',
             '-pix_fmt', 'yuv420p',
