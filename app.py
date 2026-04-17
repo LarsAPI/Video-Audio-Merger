@@ -315,7 +315,7 @@ HTML_TEMPLATE = '''
 <body>
     <div class="container">
         <h1>🎬 Video-Audio Merger</h1>
-        <p class="subtitle">Füge Audio zu deinem Video-Loop oder Standbild hinzu</p>
+        <p class="subtitle">Füge Audio zu deinem Video-Loop oder Standbild hinzu oder verbinde mehrere Audiodateien zu einer MP3</p>
         
         <div id="uploadForm">
             <div class="mode-selector">
@@ -325,14 +325,30 @@ HTML_TEMPLATE = '''
                 <button type="button" class="mode-btn" id="imageModeBtn" onclick="switchMode('image')">
                     🖼️ Standbild
                 </button>
+                <button type="button" class="mode-btn" id="audioMergeModeBtn" onclick="switchMode('audio')">
+                    🎧 Audios zusammenführen
+                </button>
             </div>
-            <div class="upload-section">
+            <div class="upload-section" id="audioSectionBox">
                 <div class="upload-box" id="audioBox" onclick="document.getElementById('audioInput').click()">
                     <div class="upload-icon">🎵</div>
                     <div class="upload-label">Audio-Datei hochladen</div>
                     <div class="upload-hint">MP3, WAV, OGG, FLAC (max 500 MB)</div>
                     <div class="file-info" id="audioInfo"></div>
                     <input type="file" id="audioInput" name="audio" accept="audio/*">
+                </div>
+            </div>
+            
+            <div class="upload-section" id="audioMergeSectionBox" style="display: none;">
+                <div class="upload-box" id="audioMergeBox" onclick="document.getElementById('audioMergeInput').click()">
+                    <div class="upload-icon">🎧</div>
+                    <div class="upload-label">Mehrere Audios hochladen</div>
+                    <div class="upload-hint">MP3, WAV, OGG, FLAC (max 500 MB pro Datei)</div>
+                    <div class="upload-hint" style="margin-top: 5px; font-weight: bold; color: #667eea;">
+                        🎼 Mindestens 2 Audiodateien für die Zusammenführung
+                    </div>
+                    <div class="file-info" id="audioMergeInfo"></div>
+                    <input type="file" id="audioMergeInput" name="audios" accept="audio/*" multiple>
                 </div>
             </div>
             
@@ -462,6 +478,7 @@ HTML_TEMPLATE = '''
             <ul>
                 <li><strong>Video-Loops:</strong> Werden automatisch geloopt bis zur Audio-Länge</li>
                 <li>🎲 <strong>Mehrere Videos:</strong> Werden zufällig gemischt für mehr Abwechslung!</li>
+                <li>🎧 <strong>Mehrere Audios:</strong> Werden zu einer einzelnen MP3 zusammengefügt</li>
                 <li><strong>Standbild:</strong> Ein Bild wird für das gesamte Video verwendet</li>
                 <li>✨ <strong>Effekte:</strong> Können mit Videos und Standbildern kombiniert werden</li>
                 <li>Maximale Dateigröße: 500 MB (Audio/Video), 50 MB (Bild)</li>
@@ -529,10 +546,13 @@ HTML_TEMPLATE = '''
         };
 
         const audioInput = document.getElementById('audioInput');
+        const audioMergeInput = document.getElementById('audioMergeInput');
         const videoInput = document.getElementById('videoInput');
         const audioBox = document.getElementById('audioBox');
+        const audioMergeBox = document.getElementById('audioMergeBox');
         const videoBox = document.getElementById('videoBox');
         const audioInfo = document.getElementById('audioInfo');
+        const audioMergeInfo = document.getElementById('audioMergeInfo');
         const videoInfo = document.getElementById('videoInfo');
         const submitBtn = document.getElementById('submitBtn');
         const resultDiv = document.getElementById('result');
@@ -542,6 +562,8 @@ HTML_TEMPLATE = '''
         const imageBox = document.getElementById('imageBox');
         const imageInfo = document.getElementById('imageInfo');
         const imageSectionBox = document.getElementById('imageSectionBox');
+        const audioSectionBox = document.getElementById('audioSectionBox');
+        const audioMergeSectionBox = document.getElementById('audioMergeSectionBox');
         const videoSectionBox = document.querySelector('[id="videoBox"]').closest('.upload-section');
         let currentMode = 'video';
         
@@ -549,17 +571,43 @@ HTML_TEMPLATE = '''
             currentMode = mode;
             const videoModeBtn = document.getElementById('videoModeBtn');
             const imageModeBtn = document.getElementById('imageModeBtn');
+            const audioMergeModeBtn = document.getElementById('audioMergeModeBtn');
+            
+            audioSectionBox.style.display = 'none';
+            audioMergeSectionBox.style.display = 'none';
+            videoSectionBox.style.display = 'none';
+            imageSectionBox.style.display = 'none';
+            audioInput.value = '';
+            audioMergeInput.value = '';
+            videoInput.value = '';
+            imageInput.value = '';
+            audioBox.classList.remove('has-file');
+            audioMergeBox.classList.remove('has-file');
+            videoBox.classList.remove('has-file');
+            imageBox.classList.remove('has-file');
+            audioInfo.textContent = '';
+            audioMergeInfo.textContent = '';
+            videoInfo.textContent = '';
+            imageInfo.textContent = '';
+            
+            videoModeBtn.classList.remove('active');
+            imageModeBtn.classList.remove('active');
+            audioMergeModeBtn.classList.remove('active');
             
             if (mode === 'video') {
                 videoModeBtn.classList.add('active');
-                imageModeBtn.classList.remove('active');
+                audioSectionBox.style.display = 'block';
                 videoSectionBox.style.display = 'block';
-                imageSectionBox.style.display = 'none';
-            } else {
+                submitBtn.textContent = 'Video erstellen';
+            } else if (mode === 'image') {
                 imageModeBtn.classList.add('active');
-                videoModeBtn.classList.remove('active');
-                videoSectionBox.style.display = 'none';
+                audioSectionBox.style.display = 'block';
                 imageSectionBox.style.display = 'block';
+                submitBtn.textContent = 'Video erstellen';
+            } else {
+                audioMergeModeBtn.classList.add('active');
+                audioMergeSectionBox.style.display = 'block';
+                submitBtn.textContent = 'Audios zusammenführen';
             }
             checkForm();
         }
@@ -585,8 +633,10 @@ HTML_TEMPLATE = '''
         function checkForm() {
             if (currentMode === 'video') {
                 submitBtn.disabled = !(audioInput.files.length > 0 && videoInput.files.length > 0);
-            } else {
+            } else if (currentMode === 'image') {
                 submitBtn.disabled = !(audioInput.files.length > 0 && imageInput.files.length > 0);
+            } else {
+                submitBtn.disabled = !(audioMergeInput.files.length > 1);
             }
         }
         
@@ -595,6 +645,25 @@ HTML_TEMPLATE = '''
                 const file = e.target.files[0];
                 audioInfo.textContent = `✓ ${file.name} (${formatFileSize(file.size)})`;
                 audioBox.classList.add('has-file');
+            }
+            checkForm();
+        });
+        
+        audioMergeInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                const fileCount = e.target.files.length;
+                const totalSize = Array.from(e.target.files).reduce((sum, file) => sum + file.size, 0);
+                const fileNames = Array.from(e.target.files).map(f => f.name).join(', ');
+                
+                audioMergeInfo.innerHTML = `
+                    ✓ ${fileCount} Audios ausgewählt<br>
+                    <small style="color: #666;">${formatFileSize(totalSize)} gesamt</small><br>
+                    <small style="color: #666; display: block; margin-top: 3px;">${fileNames}</small>
+                `;
+                audioMergeBox.classList.add('has-file');
+            } else {
+                audioMergeBox.classList.remove('has-file');
+                audioMergeInfo.textContent = '';
             }
             checkForm();
         });
@@ -628,51 +697,72 @@ HTML_TEMPLATE = '''
             const maxSize = 500 * 1024 * 1024;
             const maxImageSize = 50 * 1024 * 1024;
             
-            if (audioInput.files[0].size > maxSize) {
-                showError(`Audio-Datei zu groß: ${formatFileSize(audioInput.files[0].size)} (max 500 MB)`);
-                return;
-            }
-            
             const formData = new FormData();
-            formData.append('audio', audioInput.files[0]);
             formData.append('mode', currentMode);
             
             let uploadDescription = '';
+            let selectedEffect = document.getElementById('effectSelect').value;
+            formData.append('effect', selectedEffect);
             
             if (currentMode === 'video') {
-                // Video mode - check all videos
+                if (audioInput.files.length === 0) {
+                    showError('Audio-Datei benötigt');
+                    return;
+                }
+                if (audioInput.files[0].size > maxSize) {
+                    showError(`Audio-Datei zu groß: ${formatFileSize(audioInput.files[0].size)} (max 500 MB)`);
+                    return;
+                }
+                formData.append('audio', audioInput.files[0]);
+                
                 for (let i = 0; i < videoInput.files.length; i++) {
                     if (videoInput.files[i].size > maxSize) {
                         showError(`Video ${i+1} zu groß: ${formatFileSize(videoInput.files[i].size)} (max 500 MB)`);
                         return;
                     }
-                }
-                
-                // Append all video files
-                for (let i = 0; i < videoInput.files.length; i++) {
                     formData.append('videos', videoInput.files[i]);
                 }
                 
                 uploadDescription = `1 Audio + ${videoInput.files.length} Video${videoInput.files.length > 1 ? 's' : ''}`;
-            } else {
-                // Image mode - check image
+            } else if (currentMode === 'image') {
+                if (audioInput.files.length === 0) {
+                    showError('Audio-Datei benötigt');
+                    return;
+                }
+                if (audioInput.files[0].size > maxSize) {
+                    showError(`Audio-Datei zu groß: ${formatFileSize(audioInput.files[0].size)} (max 500 MB)`);
+                    return;
+                }
+                if (imageInput.files.length === 0) {
+                    showError('Standbild benötigt');
+                    return;
+                }
                 if (imageInput.files[0].size > maxImageSize) {
                     showError(`Bild zu groß: ${formatFileSize(imageInput.files[0].size)} (max 50 MB)`);
                     return;
                 }
-                
+                formData.append('audio', audioInput.files[0]);
                 formData.append('image', imageInput.files[0]);
                 uploadDescription = `1 Audio + 1 Standbild`;
+            } else {
+                if (audioMergeInput.files.length < 2) {
+                    showError('Bitte mindestens 2 Audiodateien auswählen');
+                    return;
+                }
+                for (let i = 0; i < audioMergeInput.files.length; i++) {
+                    if (audioMergeInput.files[i].size > maxSize) {
+                        showError(`Audio ${i+1} zu groß: ${formatFileSize(audioMergeInput.files[i].size)} (max 500 MB)`);
+                        return;
+                    }
+                    formData.append('audios', audioMergeInput.files[i]);
+                }
+                uploadDescription = `${audioMergeInput.files.length} Audios zusammenführen`;
             }
-            
-            // Append selected effect
-            const selectedEffect = document.getElementById('effectSelect').value;
-            formData.append('effect', selectedEffect);
             
             resultDiv.style.display = 'block';
             resultDiv.className = 'result loading';
             
-            const effectText = selectedEffect !== 'none' ? ` + ${selectedEffect} Effekt` : '';
+            const effectText = (currentMode !== 'audio' && selectedEffect !== 'none') ? ` + ${selectedEffect} Effekt` : '';
             
             resultDiv.innerHTML = `
                 <div class="spinner"></div>
@@ -685,32 +775,32 @@ HTML_TEMPLATE = '''
             submitBtn.disabled = true;
             
             try {
-                // Upload files
                 const response = await fetch('/upload', {
                     method: 'POST',
                     body: formData
                 });
-                
                 const result = await response.json();
                 
                 if (!result.success) {
                     showError(result.error || 'Upload fehlgeschlagen');
+                    submitBtn.disabled = false;
                     return;
                 }
                 
-                // Start status polling
                 const jobId = result.job_id;
                 console.log('Job ID:', jobId);
                 
                 let modeInfo = '';
                 if (result.mode === 'image') {
                     modeInfo = '<div style="margin-top: 5px; color: #667eea; font-weight: bold;">🖼️ Standbild-Modus</div>';
+                } else if (result.mode === 'audio') {
+                    modeInfo = '<div style="margin-top: 5px; color: #667eea; font-weight: bold;">🎧 Audios werden zusammengeführt</div>';
                 } else if (result.video_count) {
                     modeInfo = `<div style="margin-top: 5px; color: #667eea; font-weight: bold;">${result.video_count} Videos werden zufällig gemischt!</div>`;
                 }
                 
-                const effectInfo = result.effect && result.effect !== 'none' 
-                    ? `<div style="margin-top: 5px; color: #764ba2;">✨ Effekt: ${result.effect}</div>` 
+                const effectInfo = (result.effect && result.effect !== 'none' && result.mode !== 'audio')
+                    ? `<div style="margin-top: 5px; color: #764ba2;">✨ Effekt: ${result.effect}</div>`
                     : '';
                 
                 resultDiv.innerHTML = `
@@ -725,7 +815,6 @@ HTML_TEMPLATE = '''
                     <div id="progressText" style="margin-top: 5px; font-size: 0.9em; color: #666;">0%</div>
                 `;
                 
-                // Poll status every 5 seconds
                 const pollInterval = setInterval(async () => {
                     try {
                         const statusResponse = await fetch(`/status/${jobId}`);
@@ -734,10 +823,10 @@ HTML_TEMPLATE = '''
                         if (!statusData.success) {
                             clearInterval(pollInterval);
                             showError('Fehler beim Abrufen des Status');
+                            submitBtn.disabled = false;
                             return;
                         }
                         
-                        // Update UI
                         const statusMsg = document.getElementById('statusMessage');
                         const progressBar = document.getElementById('progressBar');
                         const progressText = document.getElementById('progressText');
@@ -746,42 +835,62 @@ HTML_TEMPLATE = '''
                         if (progressBar) progressBar.style.width = statusData.progress + '%';
                         if (progressText) progressText.textContent = statusData.progress + '%';
                         
-                        // Check if complete
                         if (statusData.status === 'complete') {
                             clearInterval(pollInterval);
                             
                             let modeBadge = '';
                             if (statusData.mode === 'image') {
                                 modeBadge = '<br><span style="color: #667eea;">🖼️ Standbild-Modus</span>';
+                            } else if (statusData.mode === 'audio') {
+                                modeBadge = '<br><span style="color: #667eea;">🎧 Audio-Merge erfolgreich</span>';
                             } else if (statusData.video_count) {
                                 modeBadge = `<br><span style="color: #667eea;">🎲 ${statusData.video_count} Videos zufällig gemischt</span>`;
                             }
                             
-                            const effectBadge = statusData.effect && statusData.effect !== 'none'
+                            const effectBadge = (statusData.effect && statusData.effect !== 'none' && statusData.mode !== 'audio')
                                 ? `<br><span style="color: #764ba2;">✨ Mit ${statusData.effect} Effekt</span>`
                                 : '';
                             
                             let downloadOptions = '';
                             if (statusData.has_tracklist) {
-                                downloadOptions = `
-                                    <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                                        <a href="/download/${statusData.file_id}" class="download-btn" download>
-                                            📦 ZIP (Video + Tracklist)
-                                        </a>
-                                        <a href="/download-video/${statusData.file_id}" class="download-btn" download style="background: #17a2b8;">
-                                            🎬 Nur Video
-                                        </a>
-                                    </div>
-                                    <div style="margin-top: 10px;">
-                                        <a href="/download-tracklist/${statusData.file_id}" class="download-btn" download style="width: 100%; background: #6c757d;">
-                                            📝 Nur Trackliste
-                                        </a>
-                                    </div>
-                                `;
+                                if (statusData.mode === 'audio') {
+                                    downloadOptions = `
+                                        <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                            <a href="/download/${statusData.file_id}" class="download-btn" download>
+                                                📦 ZIP (Audio + Tracklist)
+                                            </a>
+                                            <a href="/download-audio/${statusData.file_id}" class="download-btn" download style="background: #17a2b8;">
+                                                🎧 Nur MP3
+                                            </a>
+                                        </div>
+                                        <div style="margin-top: 10px;">
+                                            <a href="/download-tracklist/${statusData.file_id}" class="download-btn" download style="width: 100%; background: #6c757d;">
+                                                📝 Nur Trackliste
+                                            </a>
+                                        </div>
+                                    `;
+                                } else {
+                                    downloadOptions = `
+                                        <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                            <a href="/download/${statusData.file_id}" class="download-btn" download>
+                                                📦 ZIP (Video + Tracklist)
+                                            </a>
+                                            <a href="/download-video/${statusData.file_id}" class="download-btn" download style="background: #17a2b8;">
+                                                🎬 Nur Video
+                                            </a>
+                                        </div>
+                                        <div style="margin-top: 10px;">
+                                            <a href="/download-tracklist/${statusData.file_id}" class="download-btn" download style="width: 100%; background: #6c757d;">
+                                                📝 Nur Trackliste
+                                            </a>
+                                        </div>
+                                    `;
+                                }
                             } else {
+                                const downloadLabel = statusData.mode === 'audio' ? '⬇️ MP3 herunterladen' : '⬇️ Video herunterladen';
                                 downloadOptions = `
                                     <a href="/download/${statusData.file_id}" class="download-btn" download>
-                                        ⬇️ Video herunterladen
+                                        ${downloadLabel}
                                     </a>
                                 `;
                             }
@@ -790,7 +899,7 @@ HTML_TEMPLATE = '''
                             resultDiv.innerHTML = `
                                 <div style="text-align: center;">
                                     <div style="font-size: 3em; margin-bottom: 10px;">✅</div>
-                                    <div><strong>Video erfolgreich erstellt!</strong></div>
+                                    <div><strong>${statusData.mode === 'audio' ? 'Audios erfolgreich zusammengeführt!' : 'Video erfolgreich erstellt!'}</strong></div>
                                     <div style="margin: 10px 0;">
                                         Größe: ${statusData.size}<br>
                                         Dauer: ${statusData.duration}${modeBadge}${effectBadge}
@@ -956,6 +1065,89 @@ def create_tracklist(audio_path, file_id, noise_threshold=-30, silence_duration=
         import traceback
         print(traceback.format_exc())
         return None
+
+
+def create_audio_tracklist(audio_paths, file_id):
+    """Create a simple tracklist from multiple audio files by file order."""
+    try:
+        current_time = 0.0
+        tracklist_content = []
+
+        for idx, audio_path in enumerate(audio_paths, 1):
+            duration = get_video_duration(audio_path)
+            time_str = seconds_to_hhmmss(current_time)
+            song_name = os.path.basename(audio_path)
+            tracklist_content.append(f"{time_str} - {song_name}")
+            current_time += duration
+
+        tracklist_path = os.path.join(OUTPUT_FOLDER, f"{file_id}_tracklist.txt")
+        with open(tracklist_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(tracklist_content))
+
+        print(f"[Audio Tracklist] Created: {tracklist_path}")
+        return tracklist_path
+    except Exception as e:
+        print(f"[Audio Tracklist] Error: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return None
+
+
+def merge_audio_files(audio_paths, output_path, status_path=None):
+    """Merge multiple audio files into a single MP3."""
+    try:
+        if status_path:
+            update_status(status_path, 'processing', 15, 'Analysiere Audiodateien...')
+
+        duration = sum(get_video_duration(path) for path in audio_paths)
+        print(f"Total audio duration: {duration} seconds ({duration/60:.1f} minutes)")
+
+        if status_path:
+            update_status(status_path, 'processing', 30, 'Erstelle MP3...')
+
+        cmd = ['ffmpeg', '-y']
+        for path in audio_paths:
+            cmd.extend(['-i', path])
+
+        concat_inputs = ''.join(f'[{i}:a:0]' for i in range(len(audio_paths)))
+        concat_filter = f'{concat_inputs}concat=n={len(audio_paths)}:v=0:a=1[out]'
+        cmd.extend([
+            '-filter_complex', concat_filter,
+            '-map', '[out]',
+            '-c:a', 'libmp3lame',
+            '-b:a', '192k',
+            '-ar', '44100',
+            '-ac', '2',
+            output_path
+        ])
+
+        print(f"Running: {' '.join(cmd[:10])}...")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+
+        if result.returncode != 0:
+            print(f"FFmpeg merge stderr: {result.stderr[-500:]}")
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            raise Exception(f"FFmpeg audio merge error: {result.stderr[-200:]}")
+
+        print(f"Audio merge completed: {output_path}")
+        if status_path:
+            update_status(status_path, 'processing', 70, 'MP3 wird finalisiert...')
+        return True
+    except subprocess.TimeoutExpired as e:
+        print(f"FFmpeg timeout after {e.timeout} seconds")
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        raise Exception(f"Audio processing timeout - took longer than {e.timeout / 60:.0f} minutes")
+    except Exception as e:
+        print(f"Audio merge error: {e}")
+        if os.path.exists(output_path):
+            try:
+                os.remove(output_path)
+            except:
+                pass
+        raise
+
 
 def merge_video_audio_from_image(audio_path, image_path, output_path, status_path=None, effect='none'):
     """Create video from static image with audio and optional effects"""
@@ -1332,26 +1524,15 @@ def index():
 def upload():
     """Handle file upload and start background processing"""
     audio_path = None
+    audio_paths = []
     video_paths = []
     image_path = None
     
     try:
         print("=== UPLOAD START ===")
         
-        # Check audio file
-        if 'audio' not in request.files:
-            print("ERROR: Missing audio file")
-            return jsonify({'success': False, 'error': 'Audio-Datei benötigt'}), 400
-        
-        audio_file = request.files['audio']
-        mode = request.form.get('mode', 'video')  # 'video' or 'image'
-        
+        mode = request.form.get('mode', 'video')  # 'video', 'image' or 'audio'
         print(f"Mode: {mode}")
-        print(f"Audio file: {audio_file.filename}")
-        
-        if audio_file.filename == '':
-            print("ERROR: Empty audio filename")
-            return jsonify({'success': False, 'error': 'Leere Audio-Datei'}), 400
         
         # Get selected effect
         effect = request.form.get('effect', 'none')
@@ -1363,17 +1544,49 @@ def upload():
         file_id = str(uuid.uuid4())
         print(f"Generated file_id: {file_id}")
         
-        # Save audio file
-        audio_ext = os.path.splitext(audio_file.filename)[1] or '.mp3'
-        audio_path = os.path.join(UPLOAD_FOLDER, f"{file_id}_audio{audio_ext}")
+        if mode == 'audio':
+            if 'audios' not in request.files:
+                print("ERROR: Missing audio files")
+                return jsonify({'success': False, 'error': 'Mindestens 2 Audiodateien benötigt'}), 400
+            
+            audio_files = request.files.getlist('audios')
+            print(f"Audio files: {len(audio_files)} file(s)")
+            if len(audio_files) < 2:
+                print("ERROR: Not enough audio files")
+                return jsonify({'success': False, 'error': 'Mindestens 2 Audiodateien benötigt'}), 400
+            
+            for idx, audio_file in enumerate(audio_files):
+                if audio_file.filename == '':
+                    continue
+                audio_ext = os.path.splitext(audio_file.filename)[1] or '.mp3'
+                path = os.path.join(UPLOAD_FOLDER, f"{file_id}_audio_{idx}{audio_ext}")
+                print(f"Saving audio {idx+1}/{len(audio_files)}: {audio_file.filename}")
+                audio_file.save(path)
+                print(f"Audio {idx+1} saved: {os.path.getsize(path)} bytes")
+                audio_paths.append(path)
+            
+            if len(audio_paths) < 2:
+                print("ERROR: Not enough valid audio files")
+                return jsonify({'success': False, 'error': 'Mindestens 2 gültige Audiodateien benötigt'}), 400
+        else:
+            if 'audio' not in request.files:
+                print("ERROR: Missing audio file")
+                return jsonify({'success': False, 'error': 'Audio-Datei benötigt'}), 400
+            
+            audio_file = request.files['audio']
+            print(f"Audio file: {audio_file.filename}")
+            if audio_file.filename == '':
+                print("ERROR: Empty audio filename")
+                return jsonify({'success': False, 'error': 'Leere Audio-Datei'}), 400
+            
+            audio_ext = os.path.splitext(audio_file.filename)[1] or '.mp3'
+            audio_path = os.path.join(UPLOAD_FOLDER, f"{file_id}_audio{audio_ext}")
+            print(f"Saving audio to: {audio_path}")
+            audio_file.save(audio_path)
+            print(f"Audio saved: {os.path.getsize(audio_path)} bytes")
         
-        print(f"Saving audio to: {audio_path}")
-        audio_file.save(audio_path)
-        print(f"Audio saved: {os.path.getsize(audio_path)} bytes")
-        
-        # Handle mode-specific files
+            # Handle mode-specific files
         if mode == 'image':
-            # Image mode - single image
             if 'image' not in request.files:
                 print("ERROR: Missing image file")
                 return jsonify({'success': False, 'error': 'Standbild benötigt'}), 400
@@ -1389,9 +1602,7 @@ def upload():
             print(f"Saving image: {image_file.filename}")
             image_file.save(image_path)
             print(f"Image saved: {os.path.getsize(image_path)} bytes")
-            
-        else:
-            # Video mode - multiple videos
+        elif mode == 'video':
             if 'videos' not in request.files:
                 print("ERROR: Missing video files")
                 return jsonify({'success': False, 'error': 'Mindestens 1 Video benötigt'}), 400
@@ -1403,25 +1614,21 @@ def upload():
                 print("ERROR: No video files")
                 return jsonify({'success': False, 'error': 'Mindestens 1 Video benötigt'}), 400
             
-            # Save all video files
             for idx, video_file in enumerate(video_files):
                 if video_file.filename == '':
                     continue
-                    
                 video_ext = os.path.splitext(video_file.filename)[1] or '.mp4'
                 video_path = os.path.join(UPLOAD_FOLDER, f"{file_id}_video_{idx}{video_ext}")
-                
                 print(f"Saving video {idx+1}/{len(video_files)}: {video_file.filename}")
                 video_file.save(video_path)
                 print(f"Video {idx+1} saved: {os.path.getsize(video_path)} bytes")
-                
                 video_paths.append(video_path)
             
             if len(video_paths) == 0:
                 print("ERROR: No valid video files")
                 return jsonify({'success': False, 'error': 'Keine gültigen Video-Dateien'}), 400
         
-        output_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.mp4")
+        output_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.{ 'mp3' if mode == 'audio' else 'mp4' }")
         
         # Create status file
         status_path = os.path.join(OUTPUT_FOLDER, f"{file_id}_status.json")
@@ -1441,13 +1648,17 @@ def upload():
             json.dump(status_data, f)
         
         # Start background processing
-        mode_desc = f"Standbild" if mode == 'image' else f"{len(video_paths)} video(s)"
+        if mode == 'image':
+            mode_desc = 'Standbild'
+        elif mode == 'audio':
+            mode_desc = 'Audio-Zusammenführung'
+        else:
+            mode_desc = f"{len(video_paths)} video(s)"
         print(f"Starting background processing with {mode_desc} and '{effect}' effect...")
         
         thread = threading.Thread(
             target=process_video_background,
-            args=(file_id, audio_path, video_paths if mode == 'video' else None, 
-                  image_path if mode == 'image' else None, output_path, status_path, effect, mode)
+            args=(file_id, audio_path, audio_paths if mode == 'audio' else [], video_paths if mode == 'video' else None, image_path if mode == 'image' else None, output_path, status_path, effect, mode)
         )
         thread.daemon = True
         thread.start()
@@ -1489,10 +1700,15 @@ def upload():
         
         return jsonify({'success': False, 'error': str(e)}), 500
 
-def process_video_background(file_id, audio_path, video_paths, image_path, output_path, status_path, effect='none', mode='video'):
+def process_video_background(file_id, audio_path, audio_paths, video_paths, image_path, output_path, status_path, effect='none', mode='video'):
     """Background processing function"""
     try:
-        mode_desc = "Standbild" if mode == 'image' else f"{len(video_paths)} video(s)"
+        if mode == 'image':
+            mode_desc = "Standbild"
+        elif mode == 'audio':
+            mode_desc = "Audio-Zusammenführung"
+        else:
+            mode_desc = f"{len(video_paths)} video(s)"
         print(f"[Background] Starting merge for {file_id} with {mode_desc} and '{effect}' effect")
         
         # Update status: Starting
@@ -1500,11 +1716,12 @@ def process_video_background(file_id, audio_path, video_paths, image_path, outpu
         
         if mode == 'image':
             update_status(status_path, 'processing', 10, f'Standbild wird verarbeitet{effect_text}...')
-            # Create video from image
             merge_video_audio_from_image(audio_path, image_path, output_path, status_path, effect)
+        elif mode == 'audio':
+            update_status(status_path, 'processing', 10, 'Analysiere Audiodateien...')
+            merge_audio_files(audio_paths, output_path, status_path)
         else:
             update_status(status_path, 'processing', 10, f'Analysiere {len(video_paths)} Video(s){effect_text}...')
-            # Merge videos
             merge_video_audio(audio_path, video_paths, output_path, status_path, effect)
         
         # Get file info
@@ -1514,18 +1731,26 @@ def process_video_background(file_id, audio_path, video_paths, image_path, outpu
         # Create tracklist from original audio
         print("[Background] Creating tracklist...")
         update_status(status_path, 'processing', 90, 'Erstelle Trackliste...')
-        tracklist_path = create_tracklist(audio_path, file_id)
+        if mode == 'audio':
+            tracklist_path = create_audio_tracklist(audio_paths, file_id)
+        else:
+            tracklist_path = create_tracklist(audio_path, file_id)
         
         # Clean up input files
         print("[Background] Cleaning up input files...")
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
+        if mode == 'audio':
+            for ap in audio_paths:
+                if os.path.exists(ap):
+                    os.remove(ap)
+        else:
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
         
         if mode == 'video':
             for vp in video_paths:
                 if os.path.exists(vp):
                     os.remove(vp)
-        else:
+        elif mode == 'image':
             if image_path and os.path.exists(image_path):
                 os.remove(image_path)
         
@@ -1557,7 +1782,11 @@ def process_video_background(file_id, audio_path, video_paths, image_path, outpu
         
         # Cleanup on error
         try:
-            if audio_path and os.path.exists(audio_path):
+            if mode == 'audio':
+                for ap in audio_paths:
+                    if os.path.exists(ap):
+                        os.remove(ap)
+            elif audio_path and os.path.exists(audio_path):
                 os.remove(audio_path)
             if mode == 'video' and video_paths:
                 for vp in video_paths:
@@ -1614,48 +1843,57 @@ def get_status(job_id):
 
 @app.route('/download/<file_id>')
 def download(file_id):
-    """Download merged video and tracklist as ZIP"""
+    """Download merged output and tracklist as ZIP"""
     try:
-        video_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.mp4")
+        mp4_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.mp4")
+        mp3_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.mp3")
         tracklist_path = os.path.join(OUTPUT_FOLDER, f"{file_id}_tracklist.txt")
-        
-        if not os.path.exists(video_path):
-            return "Video not found or expired", 404
-        
-        # Check if tracklist exists
+
+        file_path = mp3_path if os.path.exists(mp3_path) else mp4_path if os.path.exists(mp4_path) else None
+        if not file_path:
+            return "Datei nicht gefunden oder abgelaufen", 404
+
         has_tracklist = os.path.exists(tracklist_path)
-        
-        # If both files exist, create a ZIP
         if has_tracklist:
-            print(f"[Download] Creating ZIP for {file_id} with video and tracklist")
-            
-            # Create ZIP in memory
+            print(f"[Download] Creating ZIP for {file_id} with output and tracklist")
             zip_buffer = BytesIO()
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                # Add video
-                zip_file.write(video_path, arcname=f"merged_video_{file_id}.mp4")
-                # Add tracklist
+                arcname = os.path.basename(file_path)
+                zip_file.write(file_path, arcname=f"merged_{file_id}{os.path.splitext(file_path)[1]}")
                 zip_file.write(tracklist_path, arcname=f"tracklist_{file_id}.txt")
-            
             zip_buffer.seek(0)
-            
             return send_file(
                 zip_buffer,
                 mimetype='application/zip',
                 as_attachment=True,
-                download_name=f'video_with_tracklist_{file_id}.zip'
+                download_name=f'output_with_tracklist_{file_id}.zip'
             )
-        else:
-            # Just video
-            print(f"[Download] Downloading video only for {file_id}")
-            
-            return send_file(
-                video_path,
-                mimetype='video/mp4',
-                as_attachment=True,
-                download_name=f'merged_video_{file_id}.mp4'
-            )
-            
+
+        mimetype = 'audio/mpeg' if file_path.endswith('.mp3') else 'video/mp4'
+        download_name = f"merged_output_{file_id}{os.path.splitext(file_path)[1]}"
+        return send_file(
+            file_path,
+            mimetype=mimetype,
+            as_attachment=True,
+            download_name=download_name
+        )
+    except Exception as e:
+        print(f"Download error: {e}")
+        return "Error downloading file", 500
+
+@app.route('/download-audio/<file_id>')
+def download_audio(file_id):
+    """Download only the MP3 audio file"""
+    try:
+        audio_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.mp3")
+        if not os.path.exists(audio_path):
+            return "Datei nicht gefunden oder abgelaufen", 404
+        return send_file(
+            audio_path,
+            mimetype='audio/mpeg',
+            as_attachment=True,
+            download_name=f'merged_audio_{file_id}.mp3'
+        )
     except Exception as e:
         print(f"Download error: {e}")
         return "Error downloading file", 500
