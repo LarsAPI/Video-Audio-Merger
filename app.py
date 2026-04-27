@@ -468,6 +468,16 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
             
+            <div id="trimFramesContainer" style="margin-top: 15px; display: none; padding: 12px; background: #f0f1ff; border-left: 4px solid #667eea; border-radius: 6px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="trimFramesToggle" checked />
+                    <label for="trimFramesToggle" style="cursor: pointer; margin: 0; font-weight: 500; color: #333;">✂️ 7 Frames vom Ende abschneiden (für Veo 3.1 Fix)</label>
+                </div>
+                <div style="margin-top: 8px; font-size: 0.85em; color: #666;">
+                    Entfernt die letzten 7 Frames jedes Videos, um Loop-Fehlanpassungen zu beheben
+                </div>
+            </div>
+            
             <button class="btn" id="submitBtn" disabled onclick="handleUpload()">Video erstellen</button>
         </div>
         
@@ -566,6 +576,7 @@ HTML_TEMPLATE = '''
         const audioMergeSectionBox = document.getElementById('audioMergeSectionBox');
         const videoSectionBox = document.querySelector('[id="videoBox"]').closest('.upload-section');
         let currentMode = 'video';
+        const trimFramesContainer = document.getElementById('trimFramesContainer');
         
         function switchMode(mode) {
             currentMode = mode;
@@ -593,11 +604,13 @@ HTML_TEMPLATE = '''
             videoModeBtn.classList.remove('active');
             imageModeBtn.classList.remove('active');
             audioMergeModeBtn.classList.remove('active');
+            trimFramesContainer.style.display = 'none';
             
             if (mode === 'video') {
                 videoModeBtn.classList.add('active');
                 audioSectionBox.style.display = 'block';
                 videoSectionBox.style.display = 'block';
+                trimFramesContainer.style.display = 'block';
                 submitBtn.textContent = 'Video erstellen';
             } else if (mode === 'image') {
                 imageModeBtn.classList.add('active');
@@ -703,6 +716,12 @@ HTML_TEMPLATE = '''
             let uploadDescription = '';
             let selectedEffect = document.getElementById('effectSelect').value;
             formData.append('effect', selectedEffect);
+            
+            // Add trim_frames option if in video mode
+            if (currentMode === 'video') {
+                const trimFramesToggle = document.getElementById('trimFramesToggle');
+                formData.append('trim_frames', trimFramesToggle.checked ? '1' : '0');
+            }
             
             if (currentMode === 'video') {
                 if (audioInput.files.length === 0) {
@@ -983,6 +1002,77 @@ def seconds_to_hhmmss(seconds):
     secs = int(seconds % 60)
     
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+def trim_video_frames(input_path, output_path, frames_to_trim=7):
+    """
+    Trim N frames from the end of a video file.
+    
+    Args:
+        input_path: Path to the input video file
+        output_path: Path to save the trimmed video file
+        frames_to_trim: Number of frames to trim from the end (default: 7)
+    
+    Returns:
+        True if successful, raises exception otherwise
+    """
+    try:
+        # Get video framerate using ffprobe
+        cmd_fps = [
+            'ffprobe', '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=r_frame_rate',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            input_path
+        ]
+        result_fps = subprocess.run(cmd_fps, capture_output=True, text=True, timeout=30)
+        fps_str = result_fps.stdout.strip()
+        
+        # Parse framerate (format: "30/1" or "29.97")
+        if '/' in fps_str:
+            num, denom = map(float, fps_str.split('/'))
+            fps = num / denom
+        else:
+            fps = float(fps_str)
+        
+        print(f"Video FPS: {fps}")
+        
+        # Get original duration
+        original_duration = get_video_duration(input_path)
+        print(f"Original duration: {original_duration} seconds")
+        
+        # Calculate duration to trim
+        trim_seconds = frames_to_trim / fps
+        new_duration = original_duration - trim_seconds
+        
+        print(f"Trimming {frames_to_trim} frames (~{trim_seconds:.3f} seconds) from end")
+        print(f"New duration: {new_duration} seconds")
+        
+        if new_duration <= 0:
+            raise Exception(f"Video too short to trim {frames_to_trim} frames")
+        
+        # Use FFmpeg to trim the video (stream copy for speed)
+        cmd_trim = [
+            'ffmpeg', '-y',
+            '-i', input_path,
+            '-t', str(new_duration),
+            '-c:v', 'copy',
+            '-c:a', 'copy',
+            output_path
+        ]
+        
+        print(f"Running trim: {' '.join(cmd_trim[:8])}...")
+        result = subprocess.run(cmd_trim, capture_output=True, text=True, timeout=600)
+        
+        if result.returncode != 0:
+            print(f"FFmpeg trim stderr: {result.stderr[-500:]}")
+            raise Exception(f"FFmpeg trim error: {result.stderr[-200:]}")
+        
+        print(f"Video trimmed successfully: {format_size(os.path.getsize(output_path))}")
+        return True
+        
+    except Exception as e:
+        print(f"Error trimming video: {e}")
+        raise
 
 def create_tracklist(audio_path, file_id, noise_threshold=-30, silence_duration=1):
     """
@@ -1290,7 +1380,7 @@ def merge_video_audio_from_image(audio_path, image_path, output_path, status_pat
                 pass
         raise
 
-def merge_video_audio(audio_path, video_paths, output_path, status_path=None, effect='none'):
+def merge_video_audio(audio_path, video_paths, output_path, status_path=None, effect='none', trim_frames=False):
     """Merge video and audio - with random video mixing and optional effects"""
     import random
     
@@ -1306,6 +1396,32 @@ def merge_video_audio(audio_path, video_paths, output_path, status_path=None, ef
         print(f"Processing with {len(video_paths)} video file(s)")
         if effect != 'none':
             print(f"Applying effect: {effect}")
+        
+        # Trim frames from end of videos if enabled
+        if trim_frames:
+            print("Trimming 7 frames from end of videos...")
+            if status_path:
+                update_status(status_path, 'processing', 12, 'Schneide 7 Frames ab...')
+            
+            trimmed_video_paths = []
+            for idx, vp in enumerate(video_paths):
+                print(f"Trimming video {idx+1}/{len(video_paths)}: {vp}")
+                # Create a trimmed version with _trimmed suffix
+                base, ext = os.path.splitext(vp)
+                trimmed_path = f"{base}_trimmed{ext}"
+                try:
+                    trim_video_frames(vp, trimmed_path, frames_to_trim=7)
+                    # Replace original with trimmed version
+                    os.remove(vp)
+                    os.rename(trimmed_path, vp)
+                    trimmed_video_paths.append(vp)
+                    print(f"Video {idx+1} trimmed successfully")
+                except Exception as e:
+                    print(f"Warning: Failed to trim video {idx+1}: {e}")
+                    # Continue with untrimmed video
+                    trimmed_video_paths.append(vp)
+            
+            video_paths = trimmed_video_paths
         
         # Get duration of each video
         video_durations = []
@@ -1540,6 +1656,10 @@ def upload():
             effect = 'none'
         print(f"Selected effect: {effect}")
         
+        # Get trim_frames option (only relevant in video mode)
+        trim_frames = request.form.get('trim_frames', '0') == '1'
+        print(f"Trim frames enabled: {trim_frames}")
+        
         # Generate unique ID
         file_id = str(uuid.uuid4())
         print(f"Generated file_id: {file_id}")
@@ -1638,7 +1758,8 @@ def upload():
             'message': 'Upload erfolgreich - Verarbeitung startet...',
             'file_id': file_id,
             'mode': mode,
-            'effect': effect
+            'effect': effect,
+            'trim_frames': trim_frames if mode == 'video' else False
         }
         
         if mode == 'video':
@@ -1658,7 +1779,7 @@ def upload():
         
         thread = threading.Thread(
             target=process_video_background,
-            args=(file_id, audio_path, audio_paths if mode == 'audio' else [], video_paths if mode == 'video' else None, image_path if mode == 'image' else None, output_path, status_path, effect, mode)
+            args=(file_id, audio_path, audio_paths if mode == 'audio' else [], video_paths if mode == 'video' else None, image_path if mode == 'image' else None, output_path, status_path, effect, mode, trim_frames if mode == 'video' else False)
         )
         thread.daemon = True
         thread.start()
@@ -1700,7 +1821,7 @@ def upload():
         
         return jsonify({'success': False, 'error': str(e)}), 500
 
-def process_video_background(file_id, audio_path, audio_paths, video_paths, image_path, output_path, status_path, effect='none', mode='video'):
+def process_video_background(file_id, audio_path, audio_paths, video_paths, image_path, output_path, status_path, effect='none', mode='video', trim_frames=False):
     """Background processing function"""
     try:
         if mode == 'image':
@@ -1722,7 +1843,7 @@ def process_video_background(file_id, audio_path, audio_paths, video_paths, imag
             merge_audio_files(audio_paths, output_path, status_path)
         else:
             update_status(status_path, 'processing', 10, f'Analysiere {len(video_paths)} Video(s){effect_text}...')
-            merge_video_audio(audio_path, video_paths, output_path, status_path, effect)
+            merge_video_audio(audio_path, video_paths, output_path, status_path, effect, trim_frames)
         
         # Get file info
         file_size = os.path.getsize(output_path)
