@@ -470,11 +470,11 @@ HTML_TEMPLATE = '''
             
             <div id="trimFramesContainer" style="margin-top: 15px; display: none; padding: 12px; background: #f0f1ff; border-left: 4px solid #667eea; border-radius: 6px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <input type="checkbox" id="trimFramesToggle" checked />
-                    <label for="trimFramesToggle" style="cursor: pointer; margin: 0; font-weight: 500; color: #333;">✂️ 7 Frames vom Ende abschneiden (für Veo 3.1 Fix)</label>
+                    <label for="trimFramesInput" style="cursor: pointer; margin: 0; font-weight: 500; color: #333;">✂️ Frames vom Ende abschneiden (für Veo 3.1 Fix):</label>
+                    <input type="number" id="trimFramesInput" value="7" min="0" max="100" style="width: 60px;" />
                 </div>
                 <div style="margin-top: 8px; font-size: 0.85em; color: #666;">
-                    Entfernt die letzten 7 Frames jedes Videos, um Loop-Fehlanpassungen zu beheben
+                    Entfernt die angegebenen Frames jedes Videos, um Loop-Fehlanpassungen zu beheben (Standard: 7)
                 </div>
             </div>
             
@@ -719,8 +719,8 @@ HTML_TEMPLATE = '''
             
             // Add trim_frames option if in video mode
             if (currentMode === 'video') {
-                const trimFramesToggle = document.getElementById('trimFramesToggle');
-                formData.append('trim_frames', trimFramesToggle.checked ? '1' : '0');
+                const trimFramesInput = document.getElementById('trimFramesInput');
+                formData.append('trim_frames', trimFramesInput.value);
             }
             
             if (currentMode === 'video') {
@@ -1398,10 +1398,10 @@ def merge_video_audio(audio_path, video_paths, output_path, status_path=None, ef
             print(f"Applying effect: {effect}")
         
         # Trim frames from end of videos if enabled
-        if trim_frames:
-            print("Trimming 7 frames from end of videos...")
+        if trim_frames > 0:
+            print(f"Trimming {trim_frames} frames from end of videos...")
             if status_path:
-                update_status(status_path, 'processing', 12, 'Schneide 7 Frames ab...')
+                update_status(status_path, 'processing', 12, f'Schneide {trim_frames} Frames ab...')
             
             trimmed_video_paths = []
             for idx, vp in enumerate(video_paths):
@@ -1410,7 +1410,7 @@ def merge_video_audio(audio_path, video_paths, output_path, status_path=None, ef
                 base, ext = os.path.splitext(vp)
                 trimmed_path = f"{base}_trimmed{ext}"
                 try:
-                    trim_video_frames(vp, trimmed_path, frames_to_trim=7)
+                    trim_video_frames(vp, trimmed_path, frames_to_trim=trim_frames)
                     # Replace original with trimmed version
                     os.remove(vp)
                     os.rename(trimmed_path, vp)
@@ -1657,8 +1657,8 @@ def upload():
         print(f"Selected effect: {effect}")
         
         # Get trim_frames option (only relevant in video mode)
-        trim_frames = request.form.get('trim_frames', '0') == '1'
-        print(f"Trim frames enabled: {trim_frames}")
+        trim_frames = int(request.form.get('trim_frames', '7'))
+        print(f"Trim frames count: {trim_frames}")
         
         # Generate unique ID
         file_id = str(uuid.uuid4())
@@ -1759,7 +1759,7 @@ def upload():
             'file_id': file_id,
             'mode': mode,
             'effect': effect,
-            'trim_frames': trim_frames if mode == 'video' else False
+            'trim_count': trim_frames if mode == 'video' else 0
         }
         
         if mode == 'video':
