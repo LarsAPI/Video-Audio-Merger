@@ -165,7 +165,3 @@ docker-compose exec video-merger bash
 ## Lizenz
 
 Dieses Projekt ist Open-Source. Bitte beachte die FFmpeg-Lizenz für verwendete Bibliotheken.
-
-## Beitrag
-
-Issues und Pull Requests sind willkommen! Bitte teste Änderungen gründlich vor dem Commit.
